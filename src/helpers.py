@@ -75,27 +75,53 @@ def check_event_chain(
     team_id: int | None = None,
 ) -> dict:
     """
-    Inspect all events in a possession phase (action_id) for clearances and long passes.
-    Clearances: event_name or event_group == "Clearance" (case-insensitive).
-    Long passes:  event_group == "Pass" AND event_detail contains "Long ball".
+    Inspect events in a possession phase (action_id) for clearances and long passes,
+    considering only the temporal window up to the 3rd pass (if more than 3 passes exist).
+    Context: Constructive Progression Rate (whether gaining team builds up via structured play).
+
+    Logic:
+    - Count passes in the action
+    - If > 3 passes: take all events (Pass + non-Pass) up to and including the 3rd pass
+    - If ≤ 3 passes: take all events in the action
+    - Check for: clearances (event_name/group == "Clearance") and long passes (Pass + "Long ball" in detail)
+
     Returns: has_clearance (bool), n_clearances, has_long_pass (bool), n_long_passes.
     """
     mask = (events_df["match_id"] == match_id) & (events_df["action_id"] == action_id)
     if team_id is not None:
         mask &= (events_df["team_id"] == team_id)
-    chain = events_df[mask]
+    chain = events_df[mask].reset_index(drop=True)
     if chain.empty:
         return {"has_clearance": False, "n_clearances": 0,
                 "has_long_pass": False, "n_long_passes": 0}
-    clearances = chain[
-        chain["event_name"].str.strip().str.lower().eq("clearance") |
-        chain["event_group"].str.strip().str.lower().eq("clearance")
+
+    # Count passes and identify 3rd pass position
+    passes_mask = chain["event_group"].str.strip().str.lower().eq("pass")
+    pass_indices = chain[passes_mask].index.tolist()
+    n_passes = len(pass_indices)
+
+    # Determine temporal window
+    if n_passes > 3:
+        # More than 3 passes: take all events up to and including 3rd pass
+        third_pass_idx = pass_indices[2]
+        to_check = chain.iloc[:third_pass_idx + 1]
+    else:
+        # 3 or fewer passes: take all events
+        to_check = chain
+
+    # Check for clearances in the window
+    clearances = to_check[
+        to_check["event_name"].str.strip().str.lower().eq("clearance") |
+        to_check["event_group"].str.strip().str.lower().eq("clearance")
     ]
-    long_passes = chain[
-        chain["event_group"].str.strip().str.lower().eq("pass") &
-        chain["event_detail"].notna() &
-        chain["event_detail"].str.contains("Long ball", case=False, na=False)
+
+    # Check for long passes in the window
+    long_passes = to_check[
+        to_check["event_group"].str.strip().str.lower().eq("pass") &
+        to_check["event_detail"].notna() &
+        to_check["event_detail"].str.contains("Long ball", case=False, na=False)
     ]
+
     return {
         "has_clearance": len(clearances) > 0,
         "n_clearances":  int(len(clearances)),
