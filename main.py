@@ -41,6 +41,7 @@ MATCHES_PATH     = DATA_DIR / "matchesList_analisi_transizioni.csv"
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from src.helpers import format_value, col_mean, col_delta_mean, pct_bool, pct_delta, check_event_chain
 from src.data_loading import (
     load_raw_data, load_action_data, load_events, load_matches,
     derive_attack_direction, build_team_label_map, build_team_name_map,
@@ -413,37 +414,8 @@ def visualise_match(
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
-def _fmt(val, fmt=".2f", na="—") -> str:
-    if val is None or (isinstance(val, float) and np.isnan(val)):
-        return na
-    try:
-        return format(float(val), fmt)
-    except (TypeError, ValueError):
-        return str(val)
-
-
-def _col_mean(df: pd.DataFrame, col: str) -> float:
-    if col not in df.columns:
-        return float("nan")
-    return float(df[col].mean(skipna=True))
-
-
-def _col_delta_mean(df: pd.DataFrame, col_a: str, col_b: str) -> float:
-    """Mean of (col_a − col_b) per row, skipping NaN."""
-    if col_a not in df.columns or col_b not in df.columns:
-        return float("nan")
-    delta = df[col_a].astype(float) - df[col_b].astype(float)
-    return float(delta.mean(skipna=True))
-
-
-def _pct_bool(df: pd.DataFrame, col: str) -> float:
-    """Percentage of True values in a bool-like column (ignores NaN/None)."""
-    if col not in df.columns:
-        return float("nan")
-    vals = df[col].dropna()
-    if len(vals) == 0:
-        return float("nan")
-    return float((vals == True).sum() / len(vals) * 100)  # noqa: E712
+# Helper functions moved to src/helpers.py
+# Use: fmt, col_mean, col_delta_mean, pct_bool (imported above)
 
 
 # ---------------------------------------------------------------------------
@@ -558,8 +530,8 @@ def _print_match_summary(
         print(f"  {'-'*72}")
 
         def _srow(label, col_base, scale=1.0, fmt=".2f"):
-            vals = [_col_mean(tdf, f"{col_base}_t{k}") * scale for k in offset_keys]
-            cells = "  ".join(f"{_fmt(v, fmt):>8}" for v in vals)
+            vals = [col_mean(tdf, f"{col_base}_t{k}") * scale for k in offset_keys]
+            cells = "  ".join(f"{format_value(v, fmt):>8}" for v in vals)
             print(f"  {label:<32} {cells}")
 
         _srow("Team Length (m)",       "team_length_m")
@@ -579,36 +551,36 @@ def _print_match_summary(
         print(f"  {'-'*78}")
 
         def _prow(label, col_base):
-            v1  = _col_mean(tdf, f"{col_base}_t2")
-            v5  = _col_mean(tdf, f"{col_base}_t10")
-            v10 = _col_mean(tdf, f"{col_base}_t20")
-            d5  = _col_delta_mean(tdf, f"{col_base}_t10", f"{col_base}_t2")
-            d10 = _col_delta_mean(tdf, f"{col_base}_t20", f"{col_base}_t2")
-            print(f"  {label:<32} {_fmt(v1):>8}  {_fmt(v5):>8}  {_fmt(v10):>8}  {_fmt(d5):>8}  {_fmt(d10):>8}")
+            v1  = col_mean(tdf, f"{col_base}_t2")
+            v5  = col_mean(tdf, f"{col_base}_t10")
+            v10 = col_mean(tdf, f"{col_base}_t20")
+            d5  = col_delta_mean(tdf, f"{col_base}_t10", f"{col_base}_t2")
+            d10 = col_delta_mean(tdf, f"{col_base}_t20", f"{col_base}_t2")
+            print(f"  {label:<32} {format_value(v1):>8}  {format_value(v5):>8}  {format_value(v10):>8}  {format_value(d5):>8}  {format_value(d10):>8}")
 
         _prow("Zone Press", "zone_press")
         _prow("Team Press", "team_press")
 
         # Transition dynamics
         print(f"\n  Transition Dynamics (negative transition — defending team)")
-        print(f"    Centroid Advance 5s (m):   {_fmt(_col_mean(tdf, 'centroid_advance_5s_m'))}")
-        print(f"    Centroid Advance 10s (m):  {_fmt(_col_mean(tdf, 'centroid_advance_10s_m'))}")
+        print(f"    Centroid Advance 5s (m):   {format_value(col_mean(tdf, 'centroid_advance_5s_m'))}")
+        print(f"    Centroid Advance 10s (m):  {format_value(col_mean(tdf, 'centroid_advance_10s_m'))}")
 
         # Positive transition
-        cp     = _pct_bool(tdf, "constructive_progression")
-        ohe    = _pct_bool(tdf, "own_half_exit")
-        ppr45  = _col_mean(tdf, "productive_pass_ratio_45") * 100
-        ppr90  = _col_mean(tdf, "productive_pass_ratio_90") * 100
-        pmd1   = _pct_bool(tdf, "playmaker_dependency_1st")
-        pmd2   = _pct_bool(tdf, "playmaker_dependency_2nd")
+        cp     = pct_bool(tdf, "constructive_progression")
+        ohe    = pct_bool(tdf, "own_half_exit")
+        ppr45  = col_mean(tdf, "productive_pass_ratio_45") * 100
+        ppr90  = col_mean(tdf, "productive_pass_ratio_90") * 100
+        pmd1   = pct_bool(tdf, "playmaker_dependency_1st")
+        pmd2   = pct_bool(tdf, "playmaker_dependency_2nd")
         print(f"\n  Positive Transition (gaining team)")
         print(f"    Opponent playmaker (Deep-Lying, composite score): {pm_str}")
-        print(f"    Constructive Progression (PassCount≥3):           {_fmt(cp, '.1f')}%")
-        print(f"    Own Half Exit (possession in own half):           {_fmt(ohe, '.1f')}%")
-        print(f"    Forward Pass Ratio (45°, within 45° of goal):     {_fmt(ppr45, '.1f')}%")
-        print(f"    Forward Pass Ratio (90°, within 90° of goal):     {_fmt(ppr90, '.1f')}%")
-        print(f"    Playmaker Dep. (1st pass→PM):                     {_fmt(pmd1, '.1f')}%")
-        print(f"    Playmaker Dep. (2nd pass→PM):                     {_fmt(pmd2, '.1f')}%")
+        print(f"    Constructive Progression (PassCount≥3):           {format_value(cp, '.1f')}%")
+        print(f"    Own Half Exit (possession in own half):           {format_value(ohe, '.1f')}%")
+        print(f"    Forward Pass Ratio (45°, within 45° of goal):     {format_value(ppr45, '.1f')}%")
+        print(f"    Forward Pass Ratio (90°, within 90° of goal):     {format_value(ppr90, '.1f')}%")
+        print(f"    Playmaker Dep. (1st pass→PM):                     {format_value(pmd1, '.1f')}%")
+        print(f"    Playmaker Dep. (2nd pass→PM):                     {format_value(pmd2, '.1f')}%")
 
     print()
 
@@ -785,23 +757,23 @@ def _save_match_summary(
                 ["Metric"] + offset_labels,
                 [
                     ["Team Length (m)"]
-                    + [_fmt(_col_mean(tdf, f"team_length_m_t{k}")) for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"team_length_m_t{k}")) for k in offset_keys],
                     ["Line Height (m)"]
-                    + [_fmt(_col_mean(tdf, f"line_height_m_t{k}")) for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"line_height_m_t{k}")) for k in offset_keys],
                     ["Players Behind Ball"]
-                    + [_fmt(_col_mean(tdf, f"players_behind_ball_t{k}"), ".1f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"players_behind_ball_t{k}"), ".1f") for k in offset_keys],
                     ["NumSup RD App1 (Rule-Based)"]
-                    + [_fmt(_col_mean(tdf, f"num_superiority_app1_t{k}"), ".1f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"num_superiority_app1_t{k}"), ".1f") for k in offset_keys],
                     ["NumSup RD App2 (Clustering)"]
-                    + [_fmt(_col_mean(tdf, f"num_superiority_app2_t{k}"), ".1f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"num_superiority_app2_t{k}"), ".1f") for k in offset_keys],
                     ["Team Compactness (m)"]
-                    + [_fmt(_col_mean(tdf, f"team_compactness_t{k}"), ".2f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"team_compactness_t{k}"), ".2f") for k in offset_keys],
                     ["Compact Δ (m, vs t0)"]
-                    + [_fmt(_col_mean(tdf, f"compactness_delta_t{k}"), ".2f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"compactness_delta_t{k}"), ".2f") for k in offset_keys],
                     ["Pitch Control"]
-                    + [_fmt(_col_mean(tdf, f"pitch_control_t{k}"), ".2f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"pitch_control_t{k}"), ".2f") for k in offset_keys],
                     ["Coverage Ratio"]
-                    + [_fmt(_col_mean(tdf, f"coverage_ratio_t{k}"), ".2f") for k in offset_keys],
+                    + [format_value(col_mean(tdf, f"coverage_ratio_t{k}"), ".2f") for k in offset_keys],
                 ],
             ),
             "",
@@ -813,17 +785,17 @@ def _save_match_summary(
                 ["Metric", "t0+1s", "t0+5s", "t0+10s", "Δ (1s→5s)", "Δ (1s→10s)"],
                 [
                     ["Zone Press (App1 zone)",
-                     _fmt(_col_mean(tdf, "zone_press_t2")),
-                     _fmt(_col_mean(tdf, "zone_press_t10")),
-                     _fmt(_col_mean(tdf, "zone_press_t20")),
-                     _fmt(_col_delta_mean(tdf, "zone_press_t10", "zone_press_t2")),
-                     _fmt(_col_delta_mean(tdf, "zone_press_t20", "zone_press_t2"))],
+                     format_value(col_mean(tdf, "zone_press_t2")),
+                     format_value(col_mean(tdf, "zone_press_t10")),
+                     format_value(col_mean(tdf, "zone_press_t20")),
+                     format_value(col_delta_mean(tdf, "zone_press_t10", "zone_press_t2")),
+                     format_value(col_delta_mean(tdf, "zone_press_t20", "zone_press_t2"))],
                     ["Team Press (all players)",
-                     _fmt(_col_mean(tdf, "team_press_t2")),
-                     _fmt(_col_mean(tdf, "team_press_t10")),
-                     _fmt(_col_mean(tdf, "team_press_t20")),
-                     _fmt(_col_delta_mean(tdf, "team_press_t10", "team_press_t2")),
-                     _fmt(_col_delta_mean(tdf, "team_press_t20", "team_press_t2"))],
+                     format_value(col_mean(tdf, "team_press_t2")),
+                     format_value(col_mean(tdf, "team_press_t10")),
+                     format_value(col_mean(tdf, "team_press_t20")),
+                     format_value(col_delta_mean(tdf, "team_press_t10", "team_press_t2")),
+                     format_value(col_delta_mean(tdf, "team_press_t20", "team_press_t2"))],
                 ],
             ),
             "",
@@ -832,10 +804,10 @@ def _save_match_summary(
                 ["Metric", "Value", "Notes"],
                 [
                     ["Centroid Advance 5s (m)",
-                     _fmt(_col_mean(tdf, "centroid_advance_5s_m")),
+                     format_value(col_mean(tdf, "centroid_advance_5s_m")),
                      "Positive = team centroid moved forward (recovering shape)"],
                     ["Centroid Advance 10s (m)",
-                     _fmt(_col_mean(tdf, "centroid_advance_10s_m")),
+                     format_value(col_mean(tdf, "centroid_advance_10s_m")),
                      "Positive = continued advance after 10 s"],
                 ],
             ),
@@ -846,22 +818,22 @@ def _save_match_summary(
                 ["Metric", "Value", "Notes"],
                 [
                     ["Constructive Progression (PassCount ≥ 3)",
-                     f"{_fmt(_pct_bool(tdf, 'constructive_progression'), '.1f')}%",
+                     f"{format_value(pct_bool(tdf, 'constructive_progression'), '.1f')}%",
                      "% transitions where gaining team made ≥3 passes in 15 s"],
                     ["Own Half Exit (StartX ≤ 500)",
-                     f"{_fmt(_pct_bool(tdf, 'own_half_exit'), '.1f')}%",
+                     f"{format_value(pct_bool(tdf, 'own_half_exit'), '.1f')}%",
                      "% transitions where gaining team had possession in own half within 15 s"],
                     ["Forward Pass Ratio (45°)",
-                     f"{_fmt(_col_mean(tdf, 'productive_pass_ratio_45') * 100, '.1f')}%",
+                     f"{format_value(col_mean(tdf, 'productive_pass_ratio_45') * 100, '.1f')}%",
                      "% of gaining team passes in 15 s that are strictly forward (within 45° of attack dir)"],
                     ["Forward Pass Ratio (90°)",
-                     f"{_fmt(_col_mean(tdf, 'productive_pass_ratio_90') * 100, '.1f')}%",
+                     f"{format_value(col_mean(tdf, 'productive_pass_ratio_90') * 100, '.1f')}%",
                      "% of gaining team passes in 15 s that are forward or sideways (within 90°)"],
                     ["Playmaker Dep. (1st pass → PM)",
-                     f"{_fmt(_pct_bool(tdf, 'playmaker_dependency_1st'), '.1f')}%",
+                     f"{format_value(pct_bool(tdf, 'playmaker_dependency_1st'), '.1f')}%",
                      f"1st pass targets playmaker ({pm_str})"],
                     ["Playmaker Dep. (2nd pass → PM)",
-                     f"{_fmt(_pct_bool(tdf, 'playmaker_dependency_2nd'), '.1f')}%",
+                     f"{format_value(pct_bool(tdf, 'playmaker_dependency_2nd'), '.1f')}%",
                      f"2nd pass targets playmaker ({pm_str})"],
                 ],
             ),
@@ -935,8 +907,8 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
             elapsed_since=t_spe,
         )
 
-        ppr45_mean = _col_mean(tdf, "productive_pass_ratio_45")
-        ppr90_mean = _col_mean(tdf, "productive_pass_ratio_90")
+        ppr45_mean = col_mean(tdf, "productive_pass_ratio_45")
+        ppr90_mean = col_mean(tdf, "productive_pass_ratio_90")
 
         team_rows.append({
             "team":     team_name,
@@ -950,34 +922,34 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
             "pct_okay": pct("Okay"),
             "pct_bad":  pct("Bad"),
             # Section 2
-            "team_len":    _fmt(_col_mean(tdf, "team_length_m_t0")),
-            "line_ht":     _fmt(_col_mean(tdf, "line_height_m_t0")),
-            "behind_ball": _fmt(_col_mean(tdf, "players_behind_ball_t0"), ".1f"),
-            "numsup1":     _fmt(_col_mean(tdf, "num_superiority_app1_t0"), ".1f"),
-            "numsup2":     _fmt(_col_mean(tdf, "num_superiority_app2_t0"), ".1f"),
-            "compact":     _fmt(_col_mean(tdf, "team_compactness_t0"), ".2f"),
+            "team_len":    format_value(col_mean(tdf, "team_length_m_t0")),
+            "line_ht":     format_value(col_mean(tdf, "line_height_m_t0")),
+            "behind_ball": format_value(col_mean(tdf, "players_behind_ball_t0"), ".1f"),
+            "numsup1":     format_value(col_mean(tdf, "num_superiority_app1_t0"), ".1f"),
+            "numsup2":     format_value(col_mean(tdf, "num_superiority_app2_t0"), ".1f"),
+            "compact":     format_value(col_mean(tdf, "team_compactness_t0"), ".2f"),
             # Section 3
-            "numsup1_5s":  _fmt(_col_mean(tdf, "num_superiority_app1_t10"), ".1f"),
-            "numsup1_10s": _fmt(_col_mean(tdf, "num_superiority_app1_t20"), ".1f"),
-            "numsup2_5s":  _fmt(_col_mean(tdf, "num_superiority_app2_t10"), ".1f"),
-            "numsup2_10s": _fmt(_col_mean(tdf, "num_superiority_app2_t20"), ".1f"),
-            "compact_d5s": _fmt(_col_mean(tdf, "compactness_delta_t10"), ".2f"),
-            "pitch_ctrl":  _fmt(_col_mean(tdf, "pitch_control_t0"), ".2f"),
-            "cov_ratio":   _fmt(_col_mean(tdf, "coverage_ratio_t0"), ".2f"),
-            "z_press_1s":  _fmt(_col_mean(tdf, "zone_press_t2")),
-            "z_press_d5":  _fmt(_col_delta_mean(tdf, "zone_press_t10", "zone_press_t2")),
-            "t_press_1s":  _fmt(_col_mean(tdf, "team_press_t2")),
-            "t_press_d5":  _fmt(_col_delta_mean(tdf, "team_press_t10", "team_press_t2")),
-            "t_press_d10": _fmt(_col_delta_mean(tdf, "team_press_t20", "team_press_t2")),
+            "numsup1_5s":  format_value(col_mean(tdf, "num_superiority_app1_t10"), ".1f"),
+            "numsup1_10s": format_value(col_mean(tdf, "num_superiority_app1_t20"), ".1f"),
+            "numsup2_5s":  format_value(col_mean(tdf, "num_superiority_app2_t10"), ".1f"),
+            "numsup2_10s": format_value(col_mean(tdf, "num_superiority_app2_t20"), ".1f"),
+            "compact_d5s": format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
+            "pitch_ctrl":  format_value(col_mean(tdf, "pitch_control_t0"), ".2f"),
+            "cov_ratio":   format_value(col_mean(tdf, "coverage_ratio_t0"), ".2f"),
+            "z_press_1s":  format_value(col_mean(tdf, "zone_press_t2")),
+            "z_press_d5":  format_value(col_delta_mean(tdf, "zone_press_t10", "zone_press_t2")),
+            "t_press_1s":  format_value(col_mean(tdf, "team_press_t2")),
+            "t_press_d5":  format_value(col_delta_mean(tdf, "team_press_t10", "team_press_t2")),
+            "t_press_d10": format_value(col_delta_mean(tdf, "team_press_t20", "team_press_t2")),
             # Section 4
-            "cadv5":       _fmt(_col_mean(tdf, "centroid_advance_5s_m")),
-            "cadv10":      _fmt(_col_mean(tdf, "centroid_advance_10s_m")),
-            "cp_pct":      f"{_fmt(_pct_bool(tdf, 'constructive_progression'), '.1f')}%",
-            "ohe_pct":     f"{_fmt(_pct_bool(tdf, 'own_half_exit'), '.1f')}%",
-            "ppr45_pct":   f"{_fmt(ppr45_mean * 100 if not np.isnan(ppr45_mean) else float('nan'), '.1f')}%",
-            "ppr90_pct":   f"{_fmt(ppr90_mean * 100 if not np.isnan(ppr90_mean) else float('nan'), '.1f')}%",
-            "pmd1_pct":    f"{_fmt(_pct_bool(tdf, 'playmaker_dependency_1st'), '.1f')}%",
-            "pmd2_pct":    f"{_fmt(_pct_bool(tdf, 'playmaker_dependency_2nd'), '.1f')}%",
+            "cadv5":       format_value(col_mean(tdf, "centroid_advance_5s_m")),
+            "cadv10":      format_value(col_mean(tdf, "centroid_advance_10s_m")),
+            "cp_pct":      f"{format_value(pct_bool(tdf, 'constructive_progression'), '.1f')}%",
+            "ohe_pct":     f"{format_value(pct_bool(tdf, 'own_half_exit'), '.1f')}%",
+            "ppr45_pct":   f"{format_value(ppr45_mean * 100 if not np.isnan(ppr45_mean) else float('nan'), '.1f')}%",
+            "ppr90_pct":   f"{format_value(ppr90_mean * 100 if not np.isnan(ppr90_mean) else float('nan'), '.1f')}%",
+            "pmd1_pct":    f"{format_value(pct_bool(tdf, 'playmaker_dependency_1st'), '.1f')}%",
+            "pmd2_pct":    f"{format_value(pct_bool(tdf, 'playmaker_dependency_2nd'), '.1f')}%",
         })
 
     # Sort by SPE (15s) descending
