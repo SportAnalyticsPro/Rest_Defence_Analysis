@@ -634,9 +634,10 @@ _SINGLE_MATCH_GLOSSARY = """
 | Rating | Meaning |
 |---|---|
 | **Best** | Defending team regains possession within 5 seconds |
-| **Bad** | Shot conceded within 15 s, OR ball enters defensive third within 5 s, OR opponent plays an in-behind pass (StartX > 750) within 15 s |
-| **Good** | Ball goes out of play within 15 s (neutral outcome), OR opponent commits a foul (defending team wins free kick) |
-| **Okay** | Defending team commits a foul within 15 s, OR attack delayed/neutralised beyond 15 s without any of the above |
+| **Bad** | Shot conceded within 15 s, OR ball enters defensive third within 5 s, OR opponent plays an in-behind pass (StartX > 750) within 15 s, OR gaining team was fouled with ≥2 player numerical advantage for defending team |
+| **Good** | Ball goes out of play within 15 s, OR opponent commits a foul (defending team wins free kick), OR defending team regains 5–15 s without dangerous outcome |
+| **Okay** | Gaining team was fouled with ≤1 player advantage for defending team, OR attack persists beyond 15 s without matching Bad/Good conditions |
+
 
 ### Positive Transition Metrics (gaining team attack quality)
 
@@ -662,7 +663,7 @@ _MULTI_MATCH_GLOSSARY = """
 | **N** | Transitions | Number of rest-defence transitions analysed for this team |
 | **SPE (15s)** | Structural Prevention Efficiency | % of transitions where ball does NOT reach defensive third in 15 s. Higher = better. |
 | **SPE (20s)** | Structural Prevention Efficiency (20s) | Same metric with 20-second window. |
-| **% Best/Good/Okay/Bad** | Transition Rating | Distribution of qualitative transition outcomes. Best = possession regained in 5 s; Bad = shot/penetration conceded. |
+| **% Best/Good/Okay/Bad** | Transition Rating | Distribution of qualitative transition outcomes. Best = regain ≤5s; Good = ball dead or opponent fouls; Okay = opponent fouled with small advantage or prolonged attack; Bad = shot/penetration/dangerous play conceded. |
 | **TeamLen(m)** | Team Length | Distance (m) from rearmost to foremost outfield player at t0. Lower = more compact. |
 | **LineHt(m)** | Line Height | Distance (m) from rearmost defensive line to own goal at t0. Higher = higher, more aggressive line. |
 | **BehindBall** | Players Behind Ball | Count of outfield players positioned behind the ball at t0. More = better cover. |
