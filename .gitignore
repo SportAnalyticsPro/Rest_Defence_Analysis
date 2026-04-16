@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Output folder structure (keep folder, ignore content)
+output/*
+!output/.gitkeep
+
+# Powerpoint files
+*.pptx
+
+# video generation package
+soccer_video_generator/
+
+# MacOS
+.DS_Store
+
+# Data folder
+data/
+
+# Logo folder
+italy-serie-a-2025-2026.football-logos.cc/
+
+# Temp commit message
+.commit_msg.txt
+.prepare_commit.sh
