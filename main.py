@@ -226,6 +226,19 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
             playmakers=playmakers,
         ) if zone_app1 is not None else {}
 
+        # Event chain flags for gaining team's opening action
+        chain_flags = {"has_clearance": False, "n_clearances": 0,
+                       "has_long_pass": False, "n_long_passes": 0}
+        if events_df is not None and pd.notna(t_row.get("gaining_action_id")):
+            try:
+                chain_flags = check_event_chain(
+                    events_df, match_id,
+                    int(t_row["gaining_action_id"]),
+                    team_id=int(t_row["gaining_team_id"]),
+                )
+            except Exception as e:
+                pass  # Fall back to empty flags on error
+
         record = {
             "match_id":            match_id,
             "period":              period,
@@ -238,6 +251,10 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
             "gaining_start_event": t_row["gaining_start_event"],
             "losing_pass_count":   t_row["losing_pass_count"],
             "losing_duration_s":   t_row["losing_duration_s"],
+            "gaining_chain_has_clearance": chain_flags["has_clearance"],
+            "gaining_chain_n_clearances":  chain_flags["n_clearances"],
+            "gaining_chain_has_long_pass": chain_flags["has_long_pass"],
+            "gaining_chain_n_long_passes": chain_flags["n_long_passes"],
         }
         for offset, mdict in prev.items():
             for k, v in mdict.items():
@@ -336,6 +353,20 @@ def visualise_match(
     metrics_records = []
     for idx, t_row, prev_metrics, trans_metrics, losing_label in all_results:
         t0_frame = int(t_row["t0_frame"])
+
+        # Event chain flags for gaining team's opening action
+        chain_flags = {"has_clearance": False, "n_clearances": 0,
+                       "has_long_pass": False, "n_long_passes": 0}
+        if events_df is not None and pd.notna(t_row.get("gaining_action_id")):
+            try:
+                chain_flags = check_event_chain(
+                    events_df, match_id,
+                    int(t_row["gaining_action_id"]),
+                    team_id=int(t_row["gaining_team_id"]),
+                )
+            except Exception:
+                pass  # Fall back to empty flags on error
+
         rec = {
             "t0_frame":         t0_frame,
             "period":           int(t_row["period"]),
@@ -344,6 +375,10 @@ def visualise_match(
             "losing_team_name": t_row["losing_team_name"],
             "losing_action_id":  t_row.get("losing_action_id"),
             "gaining_action_id": t_row.get("gaining_action_id"),
+            "gaining_chain_has_clearance": chain_flags["has_clearance"],
+            "gaining_chain_n_clearances":  chain_flags["n_clearances"],
+            "gaining_chain_has_long_pass": chain_flags["has_long_pass"],
+            "gaining_chain_n_long_passes": chain_flags["n_long_passes"],
         }
         for offset, mdict in prev_metrics.items():
             for k, v in mdict.items():

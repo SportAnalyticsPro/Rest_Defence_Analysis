@@ -289,15 +289,18 @@ def structural_prevention_efficiency(
 def constructive_progression(
     transition_row: pd.Series,
     action_df: pd.DataFrame,
+    events_df: pd.DataFrame | None = None,
 ) -> bool:
     """
     Returns True if the gaining team records a possession phase with PassCount ≥ 3
-    within 15 seconds of t0.
+    within 15 seconds of t0 AND their first 3 passes contain no clearances and no long balls.
 
     Uses action_df PassCount column (number of consecutive passes within a possession
-    phase) rather than trying to iterate individual events. A PassCount of 3 or more
-    indicates the gaining team built play constructively.
+    phase) and events_df event chain inspection. A PassCount of 3 or more with constructive
+    first 3 passes indicates the gaining team built play constructively.
     """
+    from src.helpers import check_event_chain
+
     match_id        = transition_row["match_id"]
     t0_frame        = int(transition_row["t0_frame"])
     t15_frame       = t0_frame + 30   # 15s × 2fps
@@ -313,7 +316,19 @@ def constructive_progression(
     for _, act in subsequent.iterrows():
         pc = act.get("PassCount")
         if pd.notna(pc) and float(pc) >= 3:
-            return True
+            # Check if first 3 passes were constructive (no clearances, no long passes)
+            if events_df is not None:
+                action_id = act.get("action_id")
+                if pd.notna(action_id):
+                    chain_flags = check_event_chain(
+                        events_df, match_id, int(action_id), team_id=gaining_team_id
+                    )
+                    # Constructive only if no clearances AND no long passes
+                    if not (chain_flags["has_clearance"] or chain_flags["has_long_pass"]):
+                        return True
+            else:
+                # No events_df; use PassCount ≥ 3 alone
+                return True
     return False
 
 
@@ -652,8 +667,10 @@ def compute_transition_metrics(
 
     # --- Positive transition metrics ---
 
-    # Metric 11 — Constructive Progression Rate
-    result["constructive_progression"] = constructive_progression(transition_row, action_df)
+    # Metric 11 — Constructive Progression Rate (refined with event chain inspection)
+    result["constructive_progression"] = constructive_progression(
+        transition_row, action_df, events_df=events_df
+    )
 
     # Metric 12 — Own Half Exit Efficiency (uses events_df x_start/x_end when available)
     result["own_half_exit"] = own_half_exit(
