@@ -11,9 +11,9 @@ Metric 5 — Team Compactness:
   Lower = more compact; higher = more spread out.
 
 Metric 7 — Pressing Intensity (replaces old Pressure Snapshot/Window):
-  zone_press : mean p_{losing_team}_{i} for defenders inside App1 zone
+  zone_press_app{1,2,3} : mean p_{losing_team}_{i} for defenders inside zone
   team_press : mean p_{losing_team}_{i} for ALL outfield defenders
-  p_ column scale: 0 = pressing at maximum intensity, 100 = not pressing.
+  p_ column scale: 0 = no pressing, 100 = maximum pressing intensity.
 """
 
 from __future__ import annotations
@@ -214,7 +214,7 @@ def zone_press_intensity(
 ) -> float:
     """
     Mean p_{losing_team}_{i} for losing-team outfield players inside zone.
-    p_ column: 0 = pressing at maximum intensity, 100 = not pressing.
+    Scale: 0 = no pressing, 100 = maximum pressing intensity.
     Returns NaN if no qualifying players inside zone.
     """
     values = []
@@ -235,13 +235,50 @@ def team_press_intensity(
     """
     Mean p_{losing_team}_{i} for ALL outfield players of the losing team.
     Tracks overall team pressing effort regardless of zone position.
-    p_ column: 0 = maximum pressing, 100 = no pressing.
+    Scale: 0 = no pressing, 100 = maximum pressing intensity.
     """
     values = []
     for i in range(2, 12):
         p = frame_row.get(f"p_{losing_team}_{i}")
         if pd.notna(p):
             values.append(float(p))
+    return float(np.mean(values)) if values else float("nan")
+
+
+def gaining_zone_escape_pressure(
+    frame_row: pd.Series,
+    gaining_team: str,
+    zone: RestDefenceZone,
+) -> float:
+    """
+    Mean ps_{gaining_team}_{i} for gaining-team outfield players inside zone.
+    Scale: 100 = maximum pressure received, 0 = no pressure.
+    Returns NaN if no qualifying players inside zone.
+    """
+    values = []
+    for i in range(2, 12):
+        x = frame_row.get(f"x_{gaining_team}_{i}")
+        y = frame_row.get(f"y_{gaining_team}_{i}")
+        ps = frame_row.get(f"ps_{gaining_team}_{i}")
+        if pd.notna(x) and pd.notna(y) and pd.notna(ps):
+            if zone.contains(float(x), float(y)):
+                values.append(float(ps))
+    return float(np.mean(values)) if values else float("nan")
+
+
+def gaining_team_escape_pressure(
+    frame_row: pd.Series,
+    gaining_team: str,
+) -> float:
+    """
+    Mean ps_{gaining_team}_{i} across ALL outfield players of the gaining team.
+    Scale: 100 = maximum pressure received, 0 = no pressure.
+    """
+    values = []
+    for i in range(2, 12):
+        ps = frame_row.get(f"ps_{gaining_team}_{i}")
+        if pd.notna(ps):
+            values.append(float(ps))
     return float(np.mean(values)) if values else float("nan")
 
 
@@ -254,7 +291,7 @@ def compute_prevention_metrics(
     raw_df: pd.DataFrame,
     direction_df: pd.DataFrame,
     losing_team_label: str,
-    time_offsets: tuple[int, ...] = (0, 2, 10, 20),
+    time_offsets: tuple[int, ...] = (0, 2, 10, 20, 30),
 ) -> dict:
     """
     Compute prevention metrics 1-7 at each time offset.
@@ -328,8 +365,13 @@ def compute_prevention_metrics(
             "pitch_control_zone": pc["pitch_control_zone"],
             "coverage_ratio_zone": pc["coverage_ratio_zone"],
             # Metric 7 — pressing intensity
-            "zone_press":  zone_press_intensity(frame_row, losing_team, zone_app1),
-            "team_press":  team_press_intensity(frame_row, losing_team),
+            "zone_press_app1": zone_press_intensity(frame_row, losing_team, zone_app1),
+            "zone_press_app2": zone_press_intensity(frame_row, losing_team, zone_app2),
+            "zone_press_app3": zone_press_intensity(frame_row, losing_team, zone_app3),
+            "team_press": team_press_intensity(frame_row, losing_team),
+            # Metric 8 — escape pressure (gaining team under pressure)
+            "gaining_ps_zone": gaining_zone_escape_pressure(frame_row, gaining_team, zone_app1),
+            "gaining_ps_mean": gaining_team_escape_pressure(frame_row, gaining_team),
         }
 
     # Second pass: fill compactness deltas relative to t0
@@ -359,6 +401,10 @@ def _nan_prevention_metrics() -> dict:
         "coverage_ratio":       float("nan"),
         "pitch_control_zone":   float("nan"),
         "coverage_ratio_zone":  float("nan"),
-        "zone_press":           float("nan"),
+        "zone_press_app1":      float("nan"),
+        "zone_press_app2":      float("nan"),
+        "zone_press_app3":      float("nan"),
         "team_press":           float("nan"),
+        "gaining_ps_zone":      float("nan"),
+        "gaining_ps_mean":      float("nan"),
     }

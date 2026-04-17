@@ -554,12 +554,18 @@ def _print_match_summary(
             v1  = col_mean(tdf, f"{col_base}_t2")
             v5  = col_mean(tdf, f"{col_base}_t10")
             v10 = col_mean(tdf, f"{col_base}_t20")
+            v15 = col_mean(tdf, f"{col_base}_t30")
             d5  = col_delta_mean(tdf, f"{col_base}_t10", f"{col_base}_t2")
             d10 = col_delta_mean(tdf, f"{col_base}_t20", f"{col_base}_t2")
-            print(f"  {label:<32} {format_value(v1):>8}  {format_value(v5):>8}  {format_value(v10):>8}  {format_value(d5):>8}  {format_value(d10):>8}")
+            d15 = col_delta_mean(tdf, f"{col_base}_t30", f"{col_base}_t2")
+            print(f"  {label:<32} {format_value(v1):>8}  {format_value(v5):>8}  {format_value(v10):>8}  {format_value(v15):>8}  {format_value(d5):>8}  {format_value(d10):>8}  {format_value(d15):>8}")
 
-        _prow("Zone Press", "zone_press")
+        _prow("Zone Press App1", "zone_press_app1")
+        _prow("Zone Press App2", "zone_press_app2")
+        _prow("Zone Press App3", "zone_press_app3")
         _prow("Team Press", "team_press")
+        _prow("Zone Esc.Press (App1)", "gaining_ps_zone")
+        _prow("Team Esc.Press", "gaining_ps_mean")
 
         # Transition dynamics
         print(f"\n  Transition Dynamics (negative transition — defending team)")
@@ -891,6 +897,7 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     team_rows = []
     for team_name in sorted(COMPARISON_TEAMS):
         tdf = comp_df[comp_df["losing_team_name"] == team_name]
+        gdf = comp_df[comp_df["gaining_team_name"] == team_name]
         if tdf.empty:
             continue
 
@@ -936,11 +943,20 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
             "compact_d5s": format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
             "pitch_ctrl":  format_value(col_mean(tdf, "pitch_control_t0"), ".2f"),
             "cov_ratio":   format_value(col_mean(tdf, "coverage_ratio_t0"), ".2f"),
-            "z_press_1s":  format_value(col_mean(tdf, "zone_press_t2")),
-            "z_press_d5":  format_value(col_delta_mean(tdf, "zone_press_t10", "zone_press_t2")),
-            "t_press_1s":  format_value(col_mean(tdf, "team_press_t2")),
-            "t_press_d5":  format_value(col_delta_mean(tdf, "team_press_t10", "team_press_t2")),
-            "t_press_d10": format_value(col_delta_mean(tdf, "team_press_t20", "team_press_t2")),
+            # Press metrics — from tdf (losing team transitions)
+            "zp1_1s":  format_value(col_mean(tdf, "zone_press_app1_t2")),
+            "zp1_d5":  format_value(pct_delta(tdf, "zone_press_app1", 2, 10, col_mean)),
+            "zp1_d10": format_value(pct_delta(tdf, "zone_press_app1", 2, 20, col_mean)),
+            "zp2_d5":  format_value(pct_delta(tdf, "zone_press_app2", 2, 10, col_mean)),
+            "zp3_d5":  format_value(pct_delta(tdf, "zone_press_app3", 2, 10, col_mean)),
+            "tp_1s":   format_value(col_mean(tdf, "team_press_t2")),
+            "tp_d5":   format_value(pct_delta(tdf, "team_press", 2, 10, col_mean)),
+            "tp_d10":  format_value(pct_delta(tdf, "team_press", 2, 20, col_mean)),
+            # Escape metrics — from gdf (gaining team transitions)
+            "escz_d5":  format_value(pct_delta(gdf, "gaining_ps_zone", 2, 10, col_mean)),
+            "escz_d10": format_value(pct_delta(gdf, "gaining_ps_zone", 2, 20, col_mean)),
+            "esct_d5":  format_value(pct_delta(gdf, "gaining_ps_mean", 2, 10, col_mean)),
+            "esct_d10": format_value(pct_delta(gdf, "gaining_ps_mean", 2, 20, col_mean)),
             # Section 4
             "cadv5":       format_value(col_mean(tdf, "centroid_advance_5s_m")),
             "cadv10":      format_value(col_mean(tdf, "centroid_advance_10s_m")),
