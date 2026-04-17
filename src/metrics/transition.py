@@ -146,15 +146,19 @@ def transition_rating(
     team_a_attacks_right: bool,
 ) -> str:
     """
-    Qualitative rating of the transition outcome (priority order):
+    Qualitative rating of the transition outcome (worst-case logic):
 
     Best : Losing team regains possession within 5s
     Bad  : Shot conceded within 15s, OR ball enters defensive third within 5s,
            OR gaining team plays a pass in-behind the defence within 15s
     Good : Ball goes out of play (EndToDead=1) within 15s, OR gaining team
-           commits a foul (losing team wins free kick) within 15s
-    Okay : Losing team commits a foul within 15s, OR attack neutralised/delayed
-           beyond 15s with none of the above conditions met
+           commits a foul (Foul conceded) within 15s, OR losing team regains
+           possession within 5-15s
+    Okay : Gaining team was fouled (Foul suffered) with ≤1 player advantage for
+           losing team, OR attack persists beyond 15s
+
+    When multiple outcomes are possible, returns the worst (most protective):
+    Bad > Okay > Good > Best. If nothing is found, returns Okay.
     """
     match_id          = transition_row["match_id"]
     t0_frame          = int(transition_row["t0_frame"])
@@ -164,6 +168,7 @@ def transition_rating(
     losing_team_id    = int(transition_row["losing_team_id"])
 
     ar = (losing_team_label == "a") == team_a_attacks_right
+    outcomes = set()
 
     # ── Priority 1: Best — losing team regains within 5s ──────────────────
     if transition_row.get("has_5s_window", False):
@@ -185,52 +190,106 @@ def transition_rating(
     ]
 
     # Shot conceded within 15s
+    shot_found = False
     for _, act in gaining_15s.iterrows():
         if str(act.get("EndEvent", "")).strip() in {"Saved", "Miss", "Goal", "Post"}:
-            return "Bad"
+            shot_found = True
+            break
+    if shot_found:
+        outcomes.add("Bad")
 
     # Ball enters defensive third within 5s
     if transition_row.get("has_5s_window", False):
         window = get_window_frames(raw_df, match_id, t0_frame, FRAMES_5S)
+        def_third_found = False
         for _, frow in window.iterrows():
             bx = frow.get("x_ball")
             if pd.isna(bx):
                 continue
             bx = float(bx)
             if (ar and bx < -THIRD_BOUNDARY_CM) or (not ar and bx > THIRD_BOUNDARY_CM):
-                return "Bad"
+                def_third_found = True
+                break
+        if def_third_found:
+            outcomes.add("Bad")
 
     # Pass in-behind the defence within 15s (StartX > 750 in gaining-team coords)
+    inbehind_found = False
     for _, act in gaining_15s.iterrows():
         start_x = act.get("StartX")
         if pd.notna(start_x) and float(start_x) > 750:
-            return "Bad"
+            inbehind_found = True
+            break
+    if inbehind_found:
+        outcomes.add("Bad")
 
     # ── Priority 3: Good ──────────────────────────────────────────────────
     # Ball out of play within 15s (EndToDead=1)
     for _, act in gaining_15s.iterrows():
         if int(act.get("EndToDead", 0) or 0) == 1:
-            return "Good"
+            outcomes.add("Good")
 
-    # Gaining team commits a foul (losing team wins free kick) within 15s
+    # Gaining team commits a foul (Foul conceded) within 15s → Good
     for _, act in gaining_15s.iterrows():
-        if str(act.get("EndEvent", "")).strip() in {"Foul won", "Foul Won"}:
-            return "Good"
+        end_event = str(act.get("EndEvent", "")).strip().lower()
+        if end_event == "foul conceded":
+            outcomes.add("Good")
 
-    # ── Priority 4: Okay ──────────────────────────────────────────────────
-    # Losing team commits a foul within 15s
-    losing_15s = action_df[
+    # Losing team regains possession between 5s and 15s → Good
+    regains_5_15 = action_df[
         (action_df["match_id"] == match_id)
         & (action_df["team_id"] == losing_team_id)
-        & (action_df["start_frame"] >= t0_frame)
+        & (action_df["start_frame"] > t5_frame)
         & (action_df["start_frame"] <= t15_frame)
     ]
-    for _, act in losing_15s.iterrows():
-        if str(act.get("EndEvent", "")).strip() in {"Foul committed", "Foul Committed"}:
-            return "Okay"
+    if len(regains_5_15) > 0:
+        outcomes.add("Good")
 
-    # Default: attack delayed/neutralised beyond 15s
-    return "Okay"
+    # ── Priority 4: Okay ──────────────────────────────────────────────────
+    # Gaining team was fouled (Foul suffered) within 15s → check player count
+    for _, act in gaining_15s.iterrows():
+        end_event = str(act.get("EndEvent", "")).strip().lower()
+        if end_event == "foul suffered":
+            # Check player positions at end_frame of this action
+            end_frame = int(act.get("end_frame", t0_frame))
+            frame_data = get_frame(raw_df, match_id, end_frame)
+
+            if frame_data is not None:
+                losing_pos = get_player_positions(frame_data, losing_team_label, include_gk=False)
+                gaining_team = "b" if losing_team_label == "a" else "a"
+                gaining_pos = get_player_positions(frame_data, gaining_team, include_gk=False)
+
+                # Count players behind ball for both teams
+                ball_x = frame_data.get("x_ball")
+                if pd.notna(ball_x):
+                    ball_x = float(ball_x)
+                    # Behind ball = toward losing team's goal
+                    if ar:
+                        # Attacks right: behind ball = x < ball_x
+                        losing_behind = len(losing_pos[losing_pos[:, 0] < ball_x])
+                        gaining_behind = len(gaining_pos[gaining_pos[:, 0] < ball_x])
+                    else:
+                        # Attacks left: behind ball = x > ball_x
+                        losing_behind = len(losing_pos[losing_pos[:, 0] > ball_x])
+                        gaining_behind = len(gaining_pos[gaining_pos[:, 0] > ball_x])
+
+                    # Check losing team player count
+                    if losing_behind <= gaining_behind + 1:
+                        outcomes.add("Okay")
+                    else:
+                        # Losing team has 2+ more players → Bad transition
+                        outcomes.add("Bad")
+
+    # ── Return worst outcome (Bad > Okay > Good > Best) ────────────────────
+    if "Bad" in outcomes:
+        return "Bad"
+    elif "Okay" in outcomes:
+        return "Okay"
+    elif "Good" in outcomes:
+        return "Good"
+    else:
+        # Default: no significant outcomes found
+        return "Okay"
 
 
 # ---------------------------------------------------------------------------
