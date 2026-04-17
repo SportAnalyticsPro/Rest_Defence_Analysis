@@ -311,9 +311,19 @@ def _draw_metrics_table(
         ("Compact Δ (m)",                "compactness_delta",     "+.1f", ""),
         ("Pitch Control",                "pitch_control",         ".2f",  ""),
         ("Coverage Ratio",               "coverage_ratio",        ".2f",  ""),
-        ("Zone Press",                   "zone_press",            ".1f",  ""),
+        ("Zone Press App1",              "zone_press_app1",       ".1f",  ""),
         ("Team Press",                   "team_press",            ".1f",  ""),
     ]
+
+    def _pct_fmt(ref, val):
+        """Return '±XX.X%' string, or '—' if ref is None/NaN/0."""
+        try:
+            ref, val = float(ref), float(val)
+            if ref == 0 or math.isnan(ref) or math.isnan(val):
+                return "—"
+            return f"{(val - ref) / abs(ref) * 100:+.1f}%"
+        except (TypeError, ValueError):
+            return "—"
 
     table_data = []
     for display_name, key, fmt, suffix in per_offset_rows:
@@ -354,6 +364,19 @@ def _draw_metrics_table(
     table_data.append(["Rating",       rating, "—", "—", "—"])
     table_data.append(["Duration (s)", dur,    "—", "—", "—"])
     table_data.append(["Pass Count",   pcount, "—", "—", "—"])
+
+    # Pressure delta rows (percentage change from t0+1s baseline)
+    pv = metrics_by_offset   # shorthand: dict keyed by offset
+    zp_d5 = _pct_fmt(pv.get(2, {}).get("zone_press_app1"), pv.get(10, {}).get("zone_press_app1"))
+    zp_d10 = _pct_fmt(pv.get(2, {}).get("zone_press_app1"), pv.get(20, {}).get("zone_press_app1"))
+    tp_d5 = _pct_fmt(pv.get(2, {}).get("team_press"), pv.get(10, {}).get("team_press"))
+    es_d5 = _pct_fmt(pv.get(2, {}).get("gaining_ps_zone"), pv.get(10, {}).get("gaining_ps_zone"))
+    table_data.extend([
+        ["ZPress Δ%(1→5s)", "—", "—", zp_d5, "—"],
+        ["ZPress Δ%(1→10s)", "—", "—", "—", zp_d10],
+        ["TmPress Δ%(1→5s)", "—", "—", tp_d5, "—"],
+        ["EscZ Δ%(1→5s)", "—", "—", es_d5, "—"],
+    ])
 
     tbl = ax.table(
         cellText=table_data,
@@ -460,11 +483,11 @@ def plot_transition_analysis(
     # ----------------------------------------------------------------
     # Figure layout: 2 rows of 2 pitches + 1 metrics row
     # ----------------------------------------------------------------
-    fig = plt.figure(figsize=(22, 20), facecolor="white")
+    fig = plt.figure(figsize=(22, 26), facecolor="white")
     gs  = GridSpec(
         3, 2,
         figure=fig,
-        height_ratios=[2.5, 2.5, 2.2],
+        height_ratios=[2.0, 2.0, 4.0],
         hspace=0.18,
         wspace=0.06,
     )

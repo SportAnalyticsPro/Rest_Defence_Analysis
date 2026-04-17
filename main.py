@@ -265,6 +265,10 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
         record["losing_team_name"] = (names or {}).get(
             (str(match_id), losing_tid), str(losing_tid)
         )
+        gaining_tid = int(t_row["gaining_team_id"])
+        record["gaining_team_name"] = (names or {}).get(
+            (str(match_id), gaining_tid), str(gaining_tid)
+        )
 
         records.append(record)
 
@@ -373,6 +377,9 @@ def visualise_match(
             "losing_team_id":   t_row["losing_team_id"],
             "gaining_team_id":  t_row["gaining_team_id"],
             "losing_team_name": t_row["losing_team_name"],
+            "gaining_team_name": (names or {}).get(
+                (str(match_id), int(t_row["gaining_team_id"])), str(t_row["gaining_team_id"])
+            ),
             "losing_action_id":  t_row.get("losing_action_id"),
             "gaining_action_id": t_row.get("gaining_action_id"),
             "gaining_chain_has_clearance": chain_flags["has_clearance"],
@@ -580,7 +587,7 @@ def _print_match_summary(
         _srow("Coverage Ratio",        "coverage_ratio",       fmt=".2f")
 
         # Pressing (t0+1s, t0+5s, t0+10s only — t0 is always 0 by definition)
-        print(f"\n  Pressing — inverted scale: 0=max press, 100=no press "
+        print(f"\n  Pressing & Escape Pressure (0=no intensity, 100=max; Δ%>0 = higher intensity) "
               f"(t0 omitted: team was in possession)")
         print(f"  {'Metric':<32} {'t0+1s':>8}  {'t0+5s':>8}  {'t0+10s':>8}  {'Δ(1→5s)':>8}  {'Δ(1→10s)':>8}")
         print(f"  {'-'*78}")
@@ -667,7 +674,7 @@ _SINGLE_MATCH_GLOSSARY = """
 | Compact Δ (m) | `compactness_delta` | Change in Team Compactness relative to t0. **Negative = team tightening up (good recovery).** |
 | Pitch Control | `pitch_control` | Raw sum of spatial coverage values (`c_team_i`) attributed to the defending team. **Higher = more pitch covered.** |
 | Coverage Ratio | `coverage_ratio` | Defending team pitch control as a ratio of total (c_l / (c_l + c_g)). **Higher = better relative spatial dominance.** |
-| Zone Press | `zone_press` | Mean pressing intensity of defending players INSIDE App1 zone. **Inverted scale: 0 = maximum press, 100 = no press.** A lower value means harder pressing. Negative Δ = pressing harder over time. |
+| Zone Press | `zone_press_app1/2/3` | Mean pressing intensity (`p_` column, 0–100 scale) of defending players inside the App1/App2/App3 zone. **0 = no pressing, 100 = maximum pressing.** Reported as percentage change (Δ%) from t0+1s baseline. Negative Δ = pressing harder over time (good). |
 | Team Press | `team_press` | Mean pressing intensity of ALL defending outfield players. Same inverted 0–100 scale. **Negative Δ = team increases pressing over time.** |
 | Centroid Advance | `centroid_advance_5s_m` / `_10s_m` | Forward movement (m) of the defending team's centroid toward the opponent goal. **Positive = recovering/advancing shape; negative = retreating.** |
 
@@ -716,22 +723,37 @@ _MULTI_MATCH_GLOSSARY = """
 | **CompΔ(5s)** | Compactness Delta at 5 s | Change in Team Compactness (m) from t0 to t0+5s. Negative = team tightened up (good). |
 | **PitchCtrl** | Pitch Control | Raw sum of defending team's spatial coverage values at t0. Higher = more pitch covered. |
 | **CovRatio** | Coverage Ratio | Defending team pitch control as ratio of total (c_l / total). Higher = better relative coverage. |
-| **ZonePress(t1s)** | Zone Press at t0+1s | Mean pressing intensity of defenders inside App1 zone, 1 s after transition. **Inverted scale: 0 = max press, 100 = no press.** Lower = harder pressing. |
-| **ZonePressΔ(1→5s)** | Zone Press Change | Change in zone press from t0+1s to t0+5s. **Negative = pressing harder at 5 s than at 1 s.** |
-| **TeamPress(t1s)** | Team Press at t0+1s | Mean pressing intensity of all outfield defenders 1 s after transition. Same inverted scale. |
-| **TeamPressΔ(1→5s)** | Team Press Change 1→5s | Change in overall team press from t0+1s to t0+5s. **Negative = pressing harder over time.** |
-| **TeamPressΔ(1→10s)** | Team Press Change 1→10s | Change in overall team press from t0+1s to t0+10s. Negative = sustained pressure increase. |
+| **ZPress1(t1s)** | Zone Press App1 at t0+1s | Mean pressing intensity (`p_` column, 0–100 scale) of defenders inside App1 zone, 1 s after transition. 0 = no pressing, 100 = maximum pressing. |
+| **ZPress1Δ%(5s)** | Zone Press App1 Δ% 1→5s | Percentage change in zone pressing intensity from t0+1s to t0+5s. **Positive = team pressed harder.** |
+| **ZPress1Δ%(10s)** | Zone Press App1 Δ% 1→10s | Percentage change from t0+1s to t0+10s. Positive = increased pressing. |
+| **ZPress2Δ%(5s)** | Zone Press App2 Δ% 1→5s | Same for App2 (clustering) zone approach. |
+| **ZPress3Δ%(5s)** | Zone Press App3 Δ% 1→5s | Same for App3 (adaptive) zone approach. |
+| **TmPress(t1s)** | Team Press at t0+1s | Mean pressing intensity of all outfield defenders, 1 s after transition. Same 0–100 scale. |
+| **TmPressΔ%(5s)** | Team Press Δ% 1→5s | Percentage change in overall team pressing from t0+1s to t0+5s. Positive = pressed harder. |
+| **TmPressΔ%(10s)** | Team Press Δ% 1→10s | Percentage change from t0+1s to t0+10s. |
+| **EscZ-Δ%(5s)** | Escape Pressure Zone Δ% 1→5s | Percentage change in pressure received (`ps_` column, 0–100 scale) by gaining-team players inside zone. Positive = more pressure (not escaping). Computed from transitions where team was gaining. |
+| **EscZ-Δ%(10s)** | Escape Pressure Zone Δ% 1→10s | Same from t0+1s to t0+10s. |
+| **EscT-Δ%(5s)** | Escape Pressure Team Δ% 1→5s | Percentage change in pressure received across all gaining-team outfield players. |
+| **EscT-Δ%(10s)** | Escape Pressure Team Δ% 1→10s | Same from t0+1s to t0+10s. |
 | **CAdv5s(m)** | Centroid Advance 5 s | Forward movement (m) of the defending team centroid in 5 s. Positive = recovering shape. |
 | **CAdv10s(m)** | Centroid Advance 10 s | Forward movement (m) of the defending team centroid in 10 s. |
-| **ConstrProg%** | Constructive Progression % | % of transitions where opponent makes ≥ 3 passes within 15 s. Higher = opponent builds more. |
-| **OwnHalfExit%** | Own Half Exit % | % of transitions where opponent controls ball in their own half within 15 s. |
-| **ProdPass(45°)%** | Forward Pass Ratio (45°) | % of opponent passes in 15 s that go strictly forward (within 45° of attack direction). |
-| **ProdPass(90°)%** | Forward Pass Ratio (90°) | % of opponent passes in 15 s that go forward or sideways (within 90°). |
-| **PM Dep (1st)%** | Playmaker Dep. 1st pass | % of transitions where 1st pass targets the Deep-Lying Playmaker. |
-| **PM Dep (2nd)%** | Playmaker Dep. 2nd pass | % of transitions where 2nd pass targets the Deep-Lying Playmaker. |
+| **ConstrProg%** | Constructive Progression % | % of transitions where **team made ≥ 3 passes within 15 s when attacking**. Higher = more structured build-up. Computed from team's gaining transitions. |
+| **OwnHalfExit%** | Own Half Exit % | % of transitions where **team controlled ball in their own half within 15 s when attacking**. Higher = ball retained in safe area. |
+| **ProdPass(45°)%** | Forward Pass Ratio (45°) | % of **team's passes in 15 s that go strictly forward** (within 45° of attack direction) when attacking. |
+| **ProdPass(90°)%** | Forward Pass Ratio (90°) | % of **team's passes in 15 s that go forward or sideways** (within 90°) when attacking. |
+| **PM Dep (1st)%** | Playmaker Dep. 1st pass | % of transitions where **team's 1st pass targets the Deep-Lying Playmaker** when attacking. |
+| **PM Dep (2nd)%** | Playmaker Dep. 2nd pass | % of transitions where **team's 2nd pass targets the Deep-Lying Playmaker** when attacking. |
 
-### Press Scale Note
-Zone Press and Team Press use an **inverted scale**: **0 = pressing at maximum intensity, 100 = no pressing at all**. A negative Δ means the team increased their pressing intensity over time, which is generally positive for a defending team recovering from a transition.
+### Pressure Scale Notes
+- **Pressing (`p_` columns)**: 0 = no pressing, 100 = maximum pressing intensity. Reported as **percentage change (Δ%) from t0+1s baseline**. Positive Δ% = team pressed harder.
+- **Escape Pressure (`ps_` columns)**: 0 = no pressure received, 100 = maximum pressure received. Reported as **percentage change (Δ%) from t0+1s baseline**. Positive Δ% = more pressure received (unsuccessful escape); negative Δ% = pressure relieved (successful escape).
+
+### Transition Types
+
+| Type | Definition | Metrics |
+|---|---|---|
+| **Positive Transition** | When team **loses possession** and transitions to defending. Measures how the team responds structurally and tactically. | CAdv5s/10s, TeamLen Δ, Compact Δ |
+| **Negative Transition** | When team **gains possession** and transitions to attacking. Measures how effectively the team builds play and progresses the ball. | ConstrProg%, OwnHalfExit%, ProdPass, PM Dep |
 """
 
 
@@ -756,6 +778,7 @@ def _save_match_summary(
 
     for team_name in sorted(metrics_df["losing_team_name"].unique()):
         tdf = metrics_df[metrics_df["losing_team_name"] == team_name]
+        gdf = metrics_df[metrics_df["gaining_team_name"] == team_name]
         n   = len(tdf)
 
         spe_15, spe_20 = _spe_for_team(team_name, match_transitions, raw_df, lmap, direction_df)
@@ -765,13 +788,13 @@ def _save_match_summary(
         rts = tdf["transition_rating"] if "transition_rating" in tdf.columns else pd.Series(dtype=str)
         pct = lambda r: f"{(rts == r).sum() / n * 100:.0f}%" if n > 0 else "—"
 
-        # Resolve playmaker for gaining team
-        gaining_tid = None
-        if "gaining_team_id" in tdf.columns:
-            mode = tdf["gaining_team_id"].mode()
+        # Resolve playmaker for the team's own gaining transitions
+        team_tid = None
+        if len(gdf) > 0 and "gaining_team_id" in gdf.columns:
+            mode = gdf["gaining_team_id"].mode()
             if len(mode) > 0:
-                gaining_tid = int(mode.iloc[0])
-        pm_id  = (playmakers or {}).get((str(match_id), gaining_tid)) if gaining_tid else None
+                team_tid = int(mode.iloc[0])
+        pm_id  = (playmakers or {}).get((str(match_id), team_tid)) if team_tid else None
         pm_str = _jersey_str(pm_id, jersey_map or {})
 
         md_lines += [
@@ -818,29 +841,55 @@ def _save_match_summary(
                 ],
             ),
             "",
-            "### Pressing Intensity (mean)\n",
-            "> **Inverted scale: 0 = pressing at maximum intensity, 100 = not pressing.** "
+            "### Pressing & Escape Pressure (mean)\n",
+            "> **Press scale:** 0 = no pressing, 100 = maximum pressing. Δ values show change from t0+1s. Negative Δ = team pressed harder. "
+            "> **Escape scale:** 0 = no pressure, 100 = maximum pressure received. Negative Δ = team escaped pressure successfully. "
             "t0 is omitted because the losing team was in possession (press = 0 by definition). "
             "Negative Δ = team is pressing harder later in the transition.\n",
             _md_table(
                 ["Metric", "t0+1s", "t0+5s", "t0+10s", "Δ (1s→5s)", "Δ (1s→10s)"],
                 [
-                    ["Zone Press (App1 zone)",
-                     format_value(col_mean(tdf, "zone_press_t2")),
-                     format_value(col_mean(tdf, "zone_press_t10")),
-                     format_value(col_mean(tdf, "zone_press_t20")),
-                     format_value(col_delta_mean(tdf, "zone_press_t10", "zone_press_t2")),
-                     format_value(col_delta_mean(tdf, "zone_press_t20", "zone_press_t2"))],
+                    ["Zone Press App1",
+                     format_value(col_mean(tdf, "zone_press_app1_t2")),
+                     format_value(col_mean(tdf, "zone_press_app1_t10")),
+                     format_value(col_mean(tdf, "zone_press_app1_t20")),
+                     format_value(col_delta_mean(tdf, "zone_press_app1_t10", "zone_press_app1_t2")),
+                     format_value(col_delta_mean(tdf, "zone_press_app1_t20", "zone_press_app1_t2"))],
+                    ["Zone Press App2",
+                     format_value(col_mean(tdf, "zone_press_app2_t2")),
+                     format_value(col_mean(tdf, "zone_press_app2_t10")),
+                     format_value(col_mean(tdf, "zone_press_app2_t20")),
+                     format_value(col_delta_mean(tdf, "zone_press_app2_t10", "zone_press_app2_t2")),
+                     format_value(col_delta_mean(tdf, "zone_press_app2_t20", "zone_press_app2_t2"))],
+                    ["Zone Press App3",
+                     format_value(col_mean(tdf, "zone_press_app3_t2")),
+                     format_value(col_mean(tdf, "zone_press_app3_t10")),
+                     format_value(col_mean(tdf, "zone_press_app3_t20")),
+                     format_value(col_delta_mean(tdf, "zone_press_app3_t10", "zone_press_app3_t2")),
+                     format_value(col_delta_mean(tdf, "zone_press_app3_t20", "zone_press_app3_t2"))],
                     ["Team Press (all players)",
                      format_value(col_mean(tdf, "team_press_t2")),
                      format_value(col_mean(tdf, "team_press_t10")),
                      format_value(col_mean(tdf, "team_press_t20")),
                      format_value(col_delta_mean(tdf, "team_press_t10", "team_press_t2")),
                      format_value(col_delta_mean(tdf, "team_press_t20", "team_press_t2"))],
+                    ["Zone Esc.Press (App1)",
+                     format_value(col_mean(gdf, "gaining_ps_zone_t2")),
+                     format_value(col_mean(gdf, "gaining_ps_zone_t10")),
+                     format_value(col_mean(gdf, "gaining_ps_zone_t20")),
+                     format_value(col_delta_mean(gdf, "gaining_ps_zone_t10", "gaining_ps_zone_t2")),
+                     format_value(col_delta_mean(gdf, "gaining_ps_zone_t20", "gaining_ps_zone_t2"))],
+                    ["Team Esc.Press (all players)",
+                     format_value(col_mean(gdf, "gaining_ps_mean_t2")),
+                     format_value(col_mean(gdf, "gaining_ps_mean_t10")),
+                     format_value(col_mean(gdf, "gaining_ps_mean_t20")),
+                     format_value(col_delta_mean(gdf, "gaining_ps_mean_t10", "gaining_ps_mean_t2")),
+                     format_value(col_delta_mean(gdf, "gaining_ps_mean_t20", "gaining_ps_mean_t2"))],
                 ],
             ),
             "",
-            "### Transition Dynamics (defending team)\n",
+            "### Transition Dynamics (Positive Transition)\n",
+            "> **Positive Transition:** Metrics when team loses possession and must defend. CAdv = centroid advance (positive = recovering shape). TeamLen/Compact Δ = change in structural metrics at 5s and 10s.\n",
             _md_table(
                 ["Metric", "Value", "Notes"],
                 [
@@ -850,11 +899,25 @@ def _save_match_summary(
                     ["Centroid Advance 10s (m)",
                      format_value(col_mean(tdf, "centroid_advance_10s_m")),
                      "Positive = continued advance after 10 s"],
+                    ["Team Length Δ 5s (m)",
+                     format_value(col_mean(tdf, "team_length_m_t10") - col_mean(tdf, "team_length_m_t0"), ".2f"),
+                     "Change in team length from t0 to 5s. Negative = more compact."],
+                    ["Team Length Δ 10s (m)",
+                     format_value(col_mean(tdf, "team_length_m_t20") - col_mean(tdf, "team_length_m_t0"), ".2f"),
+                     "Change in team length from t0 to 10s."],
+                    ["Compactness Δ 5s (m)",
+                     format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
+                     "Change in team compactness from t0 to 5s. Negative = tighter shape."],
+                    ["Compactness Δ 10s (m)",
+                     format_value(col_mean(tdf, "compactness_delta_t20"), ".2f"),
+                     "Change in team compactness from t0 to 10s. Negative = tighter shape."],
                 ],
             ),
             "",
-            "### Positive Transition — Gaining Team Analysis\n",
-            f"> Opponent playmaker (Deep-Lying, composite score): **{pm_str}**\n",
+            "### Transition Dynamics (Negative Transition)\n",
+            "> **Negative Transition:** Metrics show team's own attacking performance when they gain possession. ConstrProg/OwnHalfExit/ProdPass/PM Dep = quality of possessions when team has the ball.\n",
+            f"> Gaining Team Playmaker (Deep-Lying, composite score): **{pm_str}**\n",
+            "",
             _md_table(
                 ["Metric", "Value", "Notes"],
                 [
@@ -922,7 +985,10 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     metrics_df = compute_all_metrics(transitions)
     _log(f"Metrics done — {len(metrics_df)} rows.", elapsed_since=t_metrics)
 
-    comp_df = metrics_df[metrics_df["losing_team_name"].isin(COMPARISON_TEAMS)].copy()
+    comp_df = metrics_df[
+        metrics_df["losing_team_name"].isin(COMPARISON_TEAMS) |
+        metrics_df["gaining_team_name"].isin(COMPARISON_TEAMS)
+    ].copy()
 
     if comp_df.empty:
         _log("No transitions found for comparison teams.")
@@ -992,15 +1058,20 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
             "escz_d10": format_value(pct_delta(gdf, "gaining_ps_zone", 2, 20, col_mean)),
             "esct_d5":  format_value(pct_delta(gdf, "gaining_ps_mean", 2, 10, col_mean)),
             "esct_d10": format_value(pct_delta(gdf, "gaining_ps_mean", 2, 20, col_mean)),
-            # Section 4
+            # Section 4a — Defense recovery when losing ball (tdf)
             "cadv5":       format_value(col_mean(tdf, "centroid_advance_5s_m")),
             "cadv10":      format_value(col_mean(tdf, "centroid_advance_10s_m")),
-            "cp_pct":      f"{format_value(pct_bool(tdf, 'constructive_progression'), '.1f')}%",
-            "ohe_pct":     f"{format_value(pct_bool(tdf, 'own_half_exit'), '.1f')}%",
-            "ppr45_pct":   f"{format_value(ppr45_mean * 100 if not np.isnan(ppr45_mean) else float('nan'), '.1f')}%",
-            "ppr90_pct":   f"{format_value(ppr90_mean * 100 if not np.isnan(ppr90_mean) else float('nan'), '.1f')}%",
-            "pmd1_pct":    f"{format_value(pct_bool(tdf, 'playmaker_dependency_1st'), '.1f')}%",
-            "pmd2_pct":    f"{format_value(pct_bool(tdf, 'playmaker_dependency_2nd'), '.1f')}%",
+            "team_len_d5s": format_value(col_mean(tdf, "team_length_m_t10") - col_mean(tdf, "team_length_m_t0"), ".2f"),
+            "team_len_d10s": format_value(col_mean(tdf, "team_length_m_t20") - col_mean(tdf, "team_length_m_t0"), ".2f"),
+            "compact_d5s": format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
+            "compact_d10s": format_value(col_mean(tdf, "compactness_delta_t20"), ".2f"),
+            # Section 4b — Team's own attacking performance when gaining ball (gdf)
+            "cp_pct_own":      f"{format_value(pct_bool(gdf, 'constructive_progression'), '.1f')}%" if not gdf.empty else "—",
+            "ohe_pct_own":     f"{format_value(pct_bool(gdf, 'own_half_exit'), '.1f')}%" if not gdf.empty else "—",
+            "ppr45_pct_own":   f"{format_value(col_mean(gdf, 'productive_pass_ratio_45') * 100 if not gdf.empty else float('nan'), '.1f')}%" if not gdf.empty else "—",
+            "ppr90_pct_own":   f"{format_value(col_mean(gdf, 'productive_pass_ratio_90') * 100 if not gdf.empty else float('nan'), '.1f')}%" if not gdf.empty else "—",
+            "pmd1_pct_own":    f"{format_value(pct_bool(gdf, 'playmaker_dependency_1st'), '.1f')}%" if not gdf.empty else "—",
+            "pmd2_pct_own":    f"{format_value(pct_bool(gdf, 'playmaker_dependency_2nd'), '.1f')}%" if not gdf.empty else "—",
         })
 
     # Sort by SPE (15s) descending
@@ -1042,29 +1113,43 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     })
 
     sec3 = _build_sec(team_rows, {
-        "NumSup App1 (5s)":  "numsup1_5s",
-        "NumSup App1 (10s)": "numsup1_10s",
-        "NumSup App2 (5s)":  "numsup2_5s",
-        "NumSup App2 (10s)": "numsup2_10s",
-        "CompΔ(5s)":        "compact_d5s",
-        "PitchCtrl":        "pitch_ctrl",
-        "CovRatio":         "cov_ratio",
-        "ZonePress(t1s)":   "z_press_1s",
-        "ZonePressΔ(1→5s)": "z_press_d5",
-        "TeamPress(t1s)":   "t_press_1s",
-        "TeamPressΔ(1→5s)": "t_press_d5",
-        "TeamPressΔ(1→10s)":"t_press_d10",
+        "NumSup App1 (5s)":   "numsup1_5s",
+        "NumSup App1 (10s)":  "numsup1_10s",
+        "NumSup App2 (5s)":   "numsup2_5s",
+        "NumSup App2 (10s)":  "numsup2_10s",
+        "CompΔ(5s)":          "compact_d5s",
+        "PitchCtrl":          "pitch_ctrl",
+        "CovRatio":           "cov_ratio",
+        "ZPress1(t1s)":       "zp1_1s",
+        "ZPress1Δ%(5s)":      "zp1_d5",
+        "ZPress1Δ%(10s)":     "zp1_d10",
+        "ZPress2Δ%(5s)":      "zp2_d5",
+        "ZPress3Δ%(5s)":      "zp3_d5",
+        "TmPress(t1s)":       "tp_1s",
+        "TmPressΔ%(5s)":      "tp_d5",
+        "TmPressΔ%(10s)":     "tp_d10",
+        "EscZ-Δ%(5s)":        "escz_d5",
+        "EscZ-Δ%(10s)":       "escz_d10",
+        "EscT-Δ%(5s)":        "esct_d5",
+        "EscT-Δ%(10s)":       "esct_d10",
     })
 
-    sec4 = _build_sec(team_rows, {
-        "CAdv5s(m)":        "cadv5",
-        "CAdv10s(m)":       "cadv10",
-        "ConstrProg%":      "cp_pct",
-        "OwnHalfExit%":     "ohe_pct",
-        "ProdPass(45°)%":   "ppr45_pct",
-        "ProdPass(90°)%":   "ppr90_pct",
-        "PM Dep(1st)%":     "pmd1_pct",
-        "PM Dep(2nd)%":     "pmd2_pct",
+    sec4a = _build_sec(team_rows, {
+        "CAdv5s(m)":      "cadv5",
+        "CAdv10s(m)":     "cadv10",
+        "TeamLen Δ(5s)":  "team_len_d5s",
+        "TeamLen Δ(10s)": "team_len_d10s",
+        "Compact Δ(5s)":  "compact_d5s",
+        "Compact Δ(10s)": "compact_d10s",
+    })
+
+    sec4b = _build_sec(team_rows, {
+        "ConstrProg%":      "cp_pct_own",
+        "OwnHalfExit%":     "ohe_pct_own",
+        "ProdPass(45°)%":   "ppr45_pct_own",
+        "ProdPass(90°)%":   "ppr90_pct_own",
+        "PM Dep(1st)%":     "pmd1_pct_own",
+        "PM Dep(2nd)%":     "pmd2_pct_own",
     })
 
     # Console output
@@ -1083,10 +1168,16 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     _print_table(sec1)
     print("\n### Section 2 — Structural Metrics at t0")
     _print_table(sec2)
-    print("\n### Section 3 — Compactness & Pressing  [Press scale: 0=max, 100=none; Δ<0 = harder press]")
+    print("\n### Section 3 — Pressing & Escape Pressure  [Press scale: 0=no press, 100=max; Δ%>0 = pressed harder; Escape: Δ%>0 = more pressure]")
     _print_table(sec3)
-    print("\n### Section 4 — Transition Dynamics & Positive Metrics (gaining team)")
-    _print_table(sec4)
+    print("\n### Section 4a — Transition Dynamics (Positive Transition)")
+    print("  Metrics when team loses possession and must defend. CAdv = centroid advance (positive = recovering shape).")
+    print("  TeamLen/Compact Δ = change in structural metrics at 5s and 10s.")
+    _print_table(sec4a)
+    print("\n### Section 4b — Attack Quality (Negative Transition)")
+    print("  Metrics show team's own attacking performance when they gain possession.")
+    print("  ConstrProg/OwnHalfExit/ProdPass/PM Dep = quality of possessions when team has the ball.")
+    _print_table(sec4b)
     print()
 
     # Save outputs
@@ -1101,7 +1192,7 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     _log(f"  Comparison CSV saved: {csv_path}", elapsed_since=t_save)
 
     md_path = base_dir / "team_comparison.md"
-    _write_comparison_md(md_path, sec1, sec2, sec3, sec4)
+    _write_comparison_md(md_path, sec1, sec2, sec3, sec4a, sec4b)
     _log(f"  Comparison markdown saved: {md_path}")
 
 
@@ -1110,7 +1201,8 @@ def _write_comparison_md(
     sec1: pd.DataFrame,
     sec2: pd.DataFrame,
     sec3: pd.DataFrame,
-    sec4: pd.DataFrame,
+    sec4a: pd.DataFrame,
+    sec4b: pd.DataFrame,
 ) -> None:
     def _df_to_md(df: pd.DataFrame) -> str:
         cols = list(df.columns)
@@ -1136,16 +1228,20 @@ def _write_comparison_md(
         "Positive Num.Sup = defenders outnumber attackers in zone._\n",
         _df_to_md(sec2),
         "",
-        "## Section 3 — Compactness & Pressing\n",
-        "_Press scale is **inverted**: 0 = maximum pressing, 100 = no pressing. "
-        "**Negative Δ = team pressing harder** at the later timepoint. "
-        "ZonePressΔ and TeamPressΔ compare to t0+1s (the first meaningful press reading)._\n",
+        "## Section 3 — Pressing & Escape Pressure\n",
+        "_**Press scale:** 0 = no pressing, 100 = maximum pressing. Δ% reported as percentage change from t0+1s baseline. Positive Δ% = team pressed harder. "
+        "**Escape scale:** 0 = no pressure, 100 = maximum pressure. Positive Δ% = more pressure received (not escaping); negative Δ% = pressure relieved._\n",
         _df_to_md(sec3),
         "",
-        "## Section 4 — Transition Dynamics & Positive Metrics (gaining team)\n",
-        "_Centroid Advance > 0 = defending team recovered shape. "
-        "Positive transition metrics describe the OPPONENT'S attack quality — higher = opponent is more dangerous._\n",
-        _df_to_md(sec4),
+        "## Section 4a — Transition Dynamics (Positive Transition)\n",
+        "_**Positive Transition:** Metrics when team loses possession and must defend. CAdv = centroid advance (positive = recovering shape). "
+        "TeamLen/Compact Δ = change in structural metrics at 5s and 10s after possession loss._\n",
+        _df_to_md(sec4a),
+        "",
+        "## Section 4b — Transition Dynamics (Negative Transition)\n",
+        "_**Negative Transition:** Metrics show team's own attacking performance when they gain possession. "
+        "ConstrProg/OwnHalfExit/ProdPass/PM Dep = quality of possessions when team has the ball._\n",
+        _df_to_md(sec4b),
         "",
         _MULTI_MATCH_GLOSSARY,
     ]

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.4] - 17/04/2026
+
+* [feature] Press & Escape Pressure metrics: added percentage change (Δ%) reporting from t0+1s baseline for pressing intensity and escape pressure
+* [feature] Escape pressure metrics for gaining team: gaining_ps_zone and gaining_ps_mean track pressure received when team gains possession
+* [refactor] Section 4 reorganized into Positive Transition (defensive response) and Negative Transition (attacking performance) with clear definitions
+* [refactor] Added structural metric deltas (Team Length, Compactness) at 5s and 10s to transition dynamics section
+* [fix] Playmaker identification corrected: now shows gaining team's playmaker (not opponent's) in Gaining Team Analysis section
+* [fix] Scale descriptions corrected from inverted (0=max, 100=none) to normal (0=none, 100=max) for all pressing metrics
+* [refactor] Visualization grid layout adjusted: increased table row height ratio to accommodate expanded metrics (figsize 22x26, height_ratios 2.0:2.0:4.0)
+* [feature] Extended time_offsets to include t30 (15s) for complete 15-second window analysis in all prevention metrics
+
 ## [0.0.3] - 16/04/2026
 
 * [feature] Constructive Progression Rate refined with event chain inspection (clearances & long passes in first 3 passes)
