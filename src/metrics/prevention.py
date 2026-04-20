@@ -292,7 +292,8 @@ def compute_prevention_metrics(
     raw_df: pd.DataFrame,
     direction_df: pd.DataFrame,
     losing_team_label: str,
-    time_offsets: tuple[int, ...] = (0, 2, 10, 20, 30),
+    time_offsets: tuple[int, ...] | None = None,
+    fps: float = 2.0,
 ) -> dict:
     """
     Compute prevention metrics 1-7 at each time offset.
@@ -314,6 +315,11 @@ def compute_prevention_metrics(
 
     ar = (losing_team == "a") == team_a_attacks_right
     own_goal_x_cm = -PITCH_HALF_LENGTH_CM if ar else PITCH_HALF_LENGTH_CM
+
+    # Build time_offsets from fps if not explicitly provided
+    # Offsets correspond to: t0, t0+1s, t0+5s, t0+10s, t0+15s
+    if time_offsets is None:
+        time_offsets = (0, int(1 * fps), int(5 * fps), int(10 * fps), int(15 * fps))
 
     results: dict[int, dict] = {}
 

@@ -59,6 +59,7 @@ from src.data_loading import (
     build_label_map_from_raw, build_name_map_from_team_ids,
     get_team_label, get_frame,
     THIRD_BOUNDARY_CM, get_window_frames,
+    detect_fps,
 )
 from src.transition_detection import (
     detect_rest_defence_transitions, transitions_for_match, get_gaining_action,
@@ -72,10 +73,8 @@ from src.metrics.transition import (
 # Teams included in multi-match comparison
 COMPARISON_TEAMS = {"Juventus", "Hellas Verona", "Como"}
 
-# SPE windows at 2fps
-# (5s window was insensitive — ball rarely travels 35m+ after a rest-defence transition)
-FRAMES_15S = 30
-FRAMES_20S = 40
+# FPS is detected at runtime from raw data (see _load_all / _cache["fps"])
+# Frame-window constants are computed dynamically: int(N_seconds * fps)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +151,9 @@ def _load_all() -> tuple:
                         if key in _cache["names"]:
                             _cache["names"][key] = str(row["team_name"])
                 _log(f"  teams_metadata.csv loaded — team names resolved")
+
+        _cache["fps"] = detect_fps(_cache["raw"])
+        _log(f"  FPS detected: {_cache['fps']}")
 
         t4 = time.time()
         _cache["dir"] = derive_attack_direction(_cache["raw"])
@@ -245,6 +247,7 @@ def _build_jersey_map(events_df: pd.DataFrame) -> dict[int, int]:
 def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
     from src.rest_defence_area import build_zones
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
+    fps = _cache.get("fps", 2.0)
     records = []
     n_total = len(transitions)
     t_all = time.time()
@@ -260,7 +263,7 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
 
         prev = compute_prevention_metrics(
             t_row, raw_df, direction_df, losing_label,
-            time_offsets=(0, 2, 10, 20),
+            fps=fps,
         )
 
         t0_frame  = int(t_row["t0_frame"])
@@ -277,6 +280,7 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
             gaining_action_row=gaining_action,
             events_df=events_df,
             playmakers=playmakers,
+            fps=fps,
         ) if zone_app1 is not None else {}
 
         # Event chain flags for gaining team's opening action
@@ -324,7 +328,7 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
         )
 
         # SPE flags — allow report_generator to compute SPE without raw data
-        b15, b20, w15, w20 = _check_ball_reaches_third(t_row, raw_df, lmap, direction_df)
+        b15, b20, w15, w20 = _check_ball_reaches_third(t_row, raw_df, lmap, direction_df, fps=fps)
         record["ball_reached_third_15s"] = b15
         record["ball_reached_third_20s"] = b20
         record["has_15s_window"]         = w15
@@ -365,6 +369,7 @@ def visualise_match(
     from src.visualisation import plot_transition_analysis
     from src.video import generate_transition_video
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
+    fps = _cache.get("fps", 2.0)
 
     t = time.time()
     _log(f"Transition detection for match {match_id} ...")
@@ -407,7 +412,7 @@ def visualise_match(
 
         prev_metrics = compute_prevention_metrics(
             t_row, raw_df, direction_df, losing_label,
-            time_offsets=(0, 2, 10, 20),
+            fps=fps,
         )
 
         t0_row    = get_frame(raw_df, match_id, t0_frame)
@@ -419,6 +424,7 @@ def visualise_match(
                 t_row, raw_df, action_df, zone_app1, losing_label,
                 team_a_attacks_right, gaining_action_row=gaining_action,
                 events_df=events_df, playmakers=playmakers,
+                fps=fps,
             )
 
         all_results.append((idx, t_row, prev_metrics, trans_metrics, losing_label))
@@ -467,7 +473,7 @@ def visualise_match(
         rec.update(trans_metrics)
 
         # SPE flags
-        b15, b20, w15, w20 = _check_ball_reaches_third(t_row, raw_df, lmap, direction_df)
+        b15, b20, w15, w20 = _check_ball_reaches_third(t_row, raw_df, lmap, direction_df, fps=fps)
         rec["ball_reached_third_15s"]    = b15
         rec["ball_reached_third_20s"]    = b20
         rec["has_15s_window"]            = w15
@@ -553,6 +559,7 @@ def _check_ball_reaches_third(
     raw_df: pd.DataFrame,
     lmap: dict,
     direction_df: pd.DataFrame,
+    fps: float = 2.0,
 ) -> tuple[bool, bool, bool, bool]:
     """
     Returns (ball_reached_15s, ball_reached_20s, has_15s_window, has_20s_window).
@@ -561,6 +568,9 @@ def _check_ball_reaches_third(
     ball_reached_*: ball entered the defensive third within that window.
     Both ball_reached values are False when the corresponding window does not exist.
     """
+    frames_15s = int(15 * fps)
+    frames_20s = int(20 * fps)
+
     match_id  = t_row["match_id"]
     period    = int(t_row["period"])
     t0_frame  = int(t_row["t0_frame"])
@@ -569,11 +579,11 @@ def _check_ball_reaches_third(
     dir_row      = direction_df.loc[(str(match_id), period)]
     ar = (losing_label == "a") == bool(dir_row["team_a_attacks_right"])
 
-    window = get_window_frames(raw_df, match_id, t0_frame, FRAMES_20S)
+    window = get_window_frames(raw_df, match_id, t0_frame, frames_20s)
     n_frames = len(window)
 
-    has_15s_window = n_frames >= FRAMES_15S
-    has_20s_window = n_frames >= FRAMES_20S
+    has_15s_window = n_frames >= frames_15s
+    has_20s_window = n_frames >= frames_20s
 
     ball_reached_15s = False
     ball_reached_20s = False
@@ -585,7 +595,7 @@ def _check_ball_reaches_third(
         bx = float(bx)
         if (ar and bx < -THIRD_BOUNDARY_CM) or (not ar and bx > THIRD_BOUNDARY_CM):
             ball_reached_20s = True
-            if frame_idx < FRAMES_15S:
+            if frame_idx < frames_15s:
                 ball_reached_15s = True
             break
 
@@ -598,6 +608,7 @@ def _spe_for_team(
     raw_df: pd.DataFrame,
     lmap: dict,
     direction_df: pd.DataFrame,
+    fps: float = 2.0,
 ) -> tuple[float, float]:
     """
     Compute SPE at both 15s and 20s windows for all transitions defended by team_name.
@@ -621,7 +632,9 @@ def _spe_for_team(
 
         penetrated_15 = False
         penetrated_20 = False
-        window = get_window_frames(raw_df, match_id, int(t_row["t0_frame"]), FRAMES_20S)
+        frames_15s = int(15 * fps)
+        frames_20s = int(20 * fps)
+        window = get_window_frames(raw_df, match_id, int(t_row["t0_frame"]), frames_20s)
         for frame_idx, (_, frow) in enumerate(window.iterrows()):
             bx = frow.get("x_ball")
             if pd.isna(bx):
@@ -629,7 +642,7 @@ def _spe_for_team(
             bx = float(bx)
             if (ar and bx < -THIRD_BOUNDARY_CM) or (not ar and bx > THIRD_BOUNDARY_CM):
                 penetrated_20 = True
-                if frame_idx < FRAMES_15S:
+                if frame_idx < frames_15s:
                     penetrated_15 = True
                 break
         if not penetrated_15:
@@ -798,6 +811,7 @@ def multi_match_comparison(
     report: if True, generate team_comparison.md via report_generator.
     """
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
+    fps = _cache.get("fps", 2.0)
 
     t_detect = time.time()
     _log("Transition detection (all matches) ...")
@@ -878,7 +892,7 @@ def multi_match_comparison(
 
         t_spe = time.time()
         _log(f"  Computing SPE for {team_name} ({n} transitions, 15s+20s window) ...")
-        spe_15, spe_20 = _spe_for_team(team_name, transitions, raw_df, lmap, direction_df)
+        spe_15, spe_20 = _spe_for_team(team_name, transitions, raw_df, lmap, direction_df, fps=fps)
         _log(
             f"    SPE(15s)={spe_15:.1%}  SPE(20s)={spe_20:.1%}" if not np.isnan(spe_15) else "    SPE = —",
             elapsed_since=t_spe,

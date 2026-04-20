@@ -31,8 +31,7 @@ from ..data_loading import (
 )
 from ..rest_defence_area import RestDefenceZone
 
-FRAMES_5S  = 10   # 5 s × 2 frames/s
-FRAMES_10S = 20   # 10 s × 2 frames/s
+_DEFAULT_FPS = 2.0   # overridden at runtime via fps parameter
 
 # Pass-like action events used to define a pass chain
 PASS_EVENTS = {"Pass", "pass", "Cross", "cross"}
@@ -52,6 +51,7 @@ def ball_regain_dynamics(
     raw_df: pd.DataFrame,
     losing_team_label: str,
     team_a_attacks_right: bool,
+    fps: float = _DEFAULT_FPS,
 ) -> dict:
     """
     Returns dynamics at both 5s and 10s windows:
@@ -76,8 +76,8 @@ def ball_regain_dynamics(
     match_id = transition_row["match_id"]
 
     row_t0  = get_frame(raw_df, match_id, t0_frame)
-    row_t5  = get_frame(raw_df, match_id, t0_frame + FRAMES_5S)
-    row_t10 = get_frame(raw_df, match_id, t0_frame + FRAMES_10S)
+    row_t5  = get_frame(raw_df, match_id, t0_frame + int(5 * fps))
+    row_t10 = get_frame(raw_df, match_id, t0_frame + int(10 * fps))
 
     def _centroid_advance_m(row_end: pd.Series) -> float:
         """Centroid advance in metres (positive = toward opponent goal)."""
@@ -113,6 +113,7 @@ def _compute_foul_context(
     t0_frame: int,
     losing_team_label: str,
     ar: bool,
+    fps: float = _DEFAULT_FPS,
 ) -> dict:
     """
     Scan gaining team's actions within 15s for 'foul suffered' (losing team fouled).
@@ -137,7 +138,7 @@ def _compute_foul_context(
             continue
 
         end_frame   = int(act.get("end_frame", t0_frame))
-        foul_time_s = (end_frame - t0_frame) / 2.0
+        foul_time_s = (end_frame - t0_frame) / fps
 
         raw_x  = act.get("StartX")
         foul_x_m = (1000.0 - float(raw_x)) * 105.0 / 1000.0 if pd.notna(raw_x) else nan
@@ -187,6 +188,7 @@ def transition_rating(
     raw_df: pd.DataFrame,
     losing_team_label: str,
     team_a_attacks_right: bool,
+    fps: float = _DEFAULT_FPS,
 ) -> str:
     """
     Qualitative rating of the transition outcome (worst-case logic):
@@ -205,8 +207,8 @@ def transition_rating(
     """
     match_id          = transition_row["match_id"]
     t0_frame          = int(transition_row["t0_frame"])
-    t5_frame          = t0_frame + FRAMES_5S
-    t15_frame         = t0_frame + 30
+    t5_frame          = t0_frame + int(5 * fps)
+    t15_frame         = t0_frame + int(15 * fps)
     gaining_team_id   = int(transition_row["gaining_team_id"])
     losing_team_id    = int(transition_row["losing_team_id"])
 
@@ -243,7 +245,7 @@ def transition_rating(
 
     # Ball enters defensive third within 5s
     if transition_row.get("has_5s_window", False):
-        window = get_window_frames(raw_df, match_id, t0_frame, FRAMES_5S)
+        window = get_window_frames(raw_df, match_id, t0_frame, int(5 * fps))
         def_third_found = False
         for _, frow in window.iterrows():
             bx = frow.get("x_ball")
@@ -291,7 +293,7 @@ def transition_rating(
     # ── Priority 4: Okay ──────────────────────────────────────────────────
     # Gaining team was fouled (Foul suffered) within 15s → check player count
     foul_ctx = _compute_foul_context(
-        gaining_15s, raw_df, match_id, t0_frame, losing_team_label, ar
+        gaining_15s, raw_df, match_id, t0_frame, losing_team_label, ar, fps=fps
     )
     if foul_ctx["foul_committed"]:
         if foul_ctx["foul_superiority_rating"] == "Okay":
@@ -322,6 +324,7 @@ def structural_prevention_efficiency(
     raw_df: pd.DataFrame,
     team_label_map: dict[tuple[str, int], str],
     direction_df: pd.DataFrame,
+    fps: float = _DEFAULT_FPS,
 ) -> float:
     if len(transitions_df) == 0:
         return float("nan")
@@ -341,7 +344,7 @@ def structural_prevention_efficiency(
 
         penetrated = False
         # Use 10s window (FRAMES_10S) — 5s window was always ~100% for organized teams
-        window = get_window_frames(raw_df, match_id, int(t_row["t0_frame"]), FRAMES_10S)
+        window = get_window_frames(raw_df, match_id, int(t_row["t0_frame"]), int(10 * fps))
         for _, frow in window.iterrows():
             bx = frow.get("x_ball")
             if pd.isna(bx):
@@ -368,6 +371,7 @@ def constructive_progression(
     transition_row: pd.Series,
     action_df: pd.DataFrame,
     events_df: pd.DataFrame | None = None,
+    fps: float = _DEFAULT_FPS,
 ) -> bool:
     """
     Returns True if the gaining team records a possession phase with PassCount ≥ 3
@@ -381,7 +385,7 @@ def constructive_progression(
 
     match_id        = transition_row["match_id"]
     t0_frame        = int(transition_row["t0_frame"])
-    t15_frame       = t0_frame + 30   # 15s × 2fps
+    t15_frame       = t0_frame + int(15 * fps)
     gaining_team_id = int(transition_row["gaining_team_id"])
 
     subsequent = action_df[
@@ -419,6 +423,7 @@ def own_half_exit(
     action_df: pd.DataFrame,
     events_df: pd.DataFrame | None = None,
     raw_df: pd.DataFrame | None = None,
+    fps: float = _DEFAULT_FPS,
 ) -> bool:
     """
     Returns True if the gaining team plays at least one BALL-PROGRESSING pass
@@ -458,7 +463,7 @@ def own_half_exit(
             return False
 
     # Fallback: action_df StartX only (less discriminating)
-    t15_frame = t0_frame + 30
+    t15_frame = t0_frame + int(15 * fps)
     gaining_15s = action_df[
         (action_df["match_id"] == transition_row["match_id"])
         & (action_df["team_id"] == gaining_team_id)
@@ -722,6 +727,7 @@ def compute_transition_metrics(
     gaining_action_row: pd.Series | None = None,
     events_df: pd.DataFrame | None = None,
     playmakers: dict | None = None,
+    fps: float = _DEFAULT_FPS,
 ) -> dict:
     """
     Compute all transition metrics (8-14) for a single transition.
@@ -735,12 +741,14 @@ def compute_transition_metrics(
     dynamics = ball_regain_dynamics(
         transition_row, gaining_action_row, raw_df,
         losing_team_label, team_a_attacks_right,
+        fps=fps,
     )
     result.update(dynamics)
 
     result["transition_rating"] = transition_rating(
         transition_row, action_df, raw_df,
         losing_team_label, team_a_attacks_right,
+        fps=fps,
     )
 
     # --- Foul context metrics (no time limit — full transition until possession recovery) ---
@@ -765,7 +773,7 @@ def compute_transition_metrics(
         & (action_df["start_frame"] < t_regain_frame)
     ]
     foul_ctx = _compute_foul_context(
-        gaining_all, raw_df, match_id, t0_frame, losing_team_label, ar
+        gaining_all, raw_df, match_id, t0_frame, losing_team_label, ar, fps=fps
     )
     result.update(foul_ctx)
 
@@ -773,7 +781,7 @@ def compute_transition_metrics(
 
     # Metric 11 — Constructive Progression Rate (refined with event chain inspection)
     result["constructive_progression"] = constructive_progression(
-        transition_row, action_df, events_df=events_df
+        transition_row, action_df, events_df=events_df, fps=fps
     )
 
     # Metric 12 — Own Half Exit Efficiency (uses events_df x_start/x_end when available)
@@ -781,6 +789,7 @@ def compute_transition_metrics(
         transition_row, action_df,
         events_df=events_df,
         raw_df=raw_df,
+        fps=fps,
     )
 
     # Metrics 13 & 14 require events_df

@@ -10,6 +10,12 @@
 * [feature] Section 5 — Foul Analysis added to multi-match comparison MD and console output
 * [feature] gaining_team_playmaker_id and gaining_team_playmaker_jersey stored in CSV so report_generator.py can display full playmaker string (#N player_id=X) without raw data
 * [fix] Playmaker name/jersey now resolves correctly in standalone report_generator.py from CSV-only input
+* [fix] Replace all hardcoded 2fps frame constants throughout the codebase — frame windows now computed as int(N_seconds × fps) so the pipeline works correctly at any tracking framerate
+* [feature] detect_fps() added to src/data_loading.py — detects framerate from median inter-frame timestamp interval of the first match's period 1 data; falls back to 2.0 if data is insufficient
+* [refactor] FRAMES_5S, FRAMES_10S removed from transition.py; FRAMES_15S, FRAMES_20S removed from main.py — replaced with runtime expressions using the detected fps
+* [refactor] fps parameter added (default 2.0) to: ball_regain_dynamics(), transition_rating(), structural_prevention_efficiency(), constructive_progression(), own_half_exit(), compute_transition_metrics(), compute_prevention_metrics(), _check_ball_reaches_third(), _spe_for_team()
+* [refactor] compute_prevention_metrics() time_offsets now computed from fps when not explicitly provided: (0, 1s, 5s, 10s, 15s) × fps
+* [feature] fps detected and cached at startup in _load_all(); all compute functions receive fps=_cache["fps"] ensuring consistent frame windows
 
 ## [0.1.0] - 20/04/2026
 
