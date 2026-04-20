@@ -65,6 +65,20 @@ def pct_delta(tdf: pd.DataFrame, col_base: str, from_t: int, to_t: int,
 
 
 # ---------------------------------------------------------------------------
+# Player / jersey formatting
+# ---------------------------------------------------------------------------
+
+def jersey_str(player_id: int | None, jersey_map: dict) -> str:
+    """Return '#N (player_id=X)' or just 'player_id=X' if jersey unknown."""
+    if player_id is None:
+        return "—"
+    jersey = jersey_map.get(player_id)
+    if jersey is not None:
+        return f"#{jersey} (player_id={player_id})"
+    return f"player_id={player_id} (jersey unknown)"
+
+
+# ---------------------------------------------------------------------------
 # Event chain inspection
 # ---------------------------------------------------------------------------
 

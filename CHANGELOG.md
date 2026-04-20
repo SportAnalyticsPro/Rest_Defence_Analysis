@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.0] - 20/04/2026
+
+* [feature] New report_generator.py: standalone report engine that reads only from the metrics CSV — no raw tracking data required
+* [feature] report_generator.py generates single-match MD reports (generate_match_report) and multi-match comparison reports (generate_comparison_report) with full glossaries
+* [feature] SPE now computed from per-transition CSV flags (ball_reached_third_15s, has_15s_window) in report_generator — eliminates raw data dependency in all report generation
+* [refactor] main.py: _save_match_summary() reduced to CSV-save + delegate to report_generator; multi_match_comparison() delegates MD generation to report_generator
+* [feature] multi_match_comparison() now saves all_transitions.csv to output root (replaces team_comparison.csv as the primary data export)
+* [refactor] Removed _md_table(), _SINGLE_MATCH_GLOSSARY, _MULTI_MATCH_GLOSSARY, _write_comparison_md() from main.py — all live in report_generator.py
+* [refactor] Moved jersey_str() to src/helpers.py so both main.py and report_generator.py can import it
+* [fix] _print_match_summary() no longer requires raw_df/lmap/direction_df — SPE computed from metrics_df CSV flags directly
+
 ## [0.0.9] - 20/04/2026
 
 * [feature] Add ball_reached_third_15s and ball_reached_third_20s per-transition SPE flags to CSV — report_generator can now compute SPE as a simple column mean without accessing raw data
