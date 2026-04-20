@@ -28,6 +28,15 @@ data/
 # Logo folder
 italy-serie-a-2025-2026.football-logos.cc/
 
+# Scratch / development notebooks
+scratch/
+
 # Temp commit message
 .commit_msg.txt
-.prepare_commit.sh
+prepare_commit.sh
+
+# logs files
+*.log
+
+# Claude files
+.claude/

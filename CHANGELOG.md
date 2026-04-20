@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.1] - 20/04/2026
+
+* [feature] Foul analysis: 6 new per-transition CSV columns — foul_committed, foul_time_s, foul_x_m, foul_defenders_behind_ball, foul_attackers_behind_ball, foul_superiority_rating
+* [feature] foul_x_m converted from Wyscout 0-1000 to metres (0=own goal, 105=opponent goal) for human-readable pitch location
+* [feature] Foul detection has no time limit — captures fouls until the losing team naturally regains possession (previously capped at 15 s)
+* [feature] _compute_foul_context() extracted as shared helper used by both transition_rating() and compute_transition_metrics()
+* [feature] Foul Analysis section added to per-match MD report (via report_generator.py) per defending team
+* [feature] Section 5 — Foul Analysis added to multi-match comparison MD and console output
+* [feature] gaining_team_playmaker_id and gaining_team_playmaker_jersey stored in CSV so report_generator.py can display full playmaker string (#N player_id=X) without raw data
+* [fix] Playmaker name/jersey now resolves correctly in standalone report_generator.py from CSV-only input
+
 ## [0.1.0] - 20/04/2026
 
 * [feature] New report_generator.py: standalone report engine that reads only from the metrics CSV — no raw tracking data required

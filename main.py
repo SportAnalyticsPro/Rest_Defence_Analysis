@@ -334,6 +334,12 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
             == bool(direction_df.loc[(str(match_id), period)]["team_a_attacks_right"])
         )
 
+        # Resolve playmaker jersey number so report_generator can display without raw data
+        _pm_id = record.get("gaining_team_playmaker_id")
+        record["gaining_team_playmaker_jersey"] = (
+            int(jersey_map.get(int(_pm_id))) if _pm_id is not None and jersey_map.get(int(_pm_id)) is not None else None
+        )
+
         records.append(record)
 
         row_elapsed = time.time() - t_row_start
@@ -469,6 +475,10 @@ def visualise_match(
         rec["losing_team_attacks_right"] = (
             (losing_label == "a")
             == bool(direction_df.loc[(str(match_id), int(t_row["period"]))]["team_a_attacks_right"])
+        )
+        _pm_id = rec.get("gaining_team_playmaker_id")
+        rec["gaining_team_playmaker_jersey"] = (
+            int(jersey_map.get(int(_pm_id))) if _pm_id is not None and jersey_map.get(int(_pm_id)) is not None else None
         )
 
         metrics_records.append(rec)
@@ -836,6 +846,23 @@ def multi_match_comparison(
         _log("No transitions found for comparison teams.")
         return
 
+    def _build_foul_row_console(tdf: pd.DataFrame) -> dict:
+        if "foul_committed" not in tdf.columns:
+            return {k: "—" for k in ("n_fouls", "foul_rate", "foul_time_s_avg",
+                                      "foul_x_m_avg", "bad_pct", "okay_pct")}
+        foul_df = tdf[tdf["foul_committed"].astype(bool)]
+        n, n_f  = len(tdf), len(foul_df)
+        bad_f   = (foul_df["foul_superiority_rating"] == "Bad").sum()
+        okay_f  = (foul_df["foul_superiority_rating"] == "Okay").sum()
+        return {
+            "n_fouls":        n_f,
+            "foul_rate":      f"{n_f/n*100:.1f}%" if n else "—",
+            "foul_time_s_avg":format_value(foul_df["foul_time_s"].mean(), ".1f") if n_f else "—",
+            "foul_x_m_avg":   format_value(foul_df["foul_x_m"].mean(), ".1f") if n_f else "—",
+            "bad_pct":        f"{bad_f} ({bad_f/n_f*100:.0f}%)" if n_f else "—",
+            "okay_pct":       f"{okay_f} ({okay_f/n_f*100:.0f}%)" if n_f else "—",
+        }
+
     # Build per-team rows
     team_rows = []
     for team_name in sorted(comparison_teams):
@@ -911,6 +938,8 @@ def multi_match_comparison(
             "ppr90_pct_own":   f"{format_value(col_mean(gdf, 'productive_pass_ratio_90') * 100 if not gdf.empty else float('nan'), '.1f')}%" if not gdf.empty else "—",
             "pmd1_pct_own":    f"{format_value(pct_bool(gdf, 'playmaker_dependency_1st'), '.1f')}%" if not gdf.empty else "—",
             "pmd2_pct_own":    f"{format_value(pct_bool(gdf, 'playmaker_dependency_2nd'), '.1f')}%" if not gdf.empty else "—",
+            # Section 5 — Foul analysis
+            **_build_foul_row_console(tdf),
         })
 
     # Sort by SPE (15s) descending
@@ -987,6 +1016,14 @@ def multi_match_comparison(
         "PM Dep(1st)%":     "pmd1_pct_own",
         "PM Dep(2nd)%":     "pmd2_pct_own",
     })
+    sec5 = _build_sec(team_rows, {
+        "N Fouls":          "n_fouls",
+        "Foul Rate":        "foul_rate",
+        "Avg Time (s)":     "foul_time_s_avg",
+        "Avg Loc (m)":      "foul_x_m_avg",
+        "Bad (sup.)":       "bad_pct",
+        "Okay (eq./inf.)":  "okay_pct",
+    })
 
     # Console output
     try:
@@ -1014,6 +1051,10 @@ def multi_match_comparison(
     print("  Metrics show team's own attacking performance when they gain possession.")
     print("  ConstrProg/OwnHalfExit/ProdPass/PM Dep = quality of possessions when team has the ball.")
     _print_table(sec4b)
+    print("\n### Section 5 — Foul Analysis (Defending Team, within 15 s)")
+    print("  Bad = fouled in numerical superiority. Okay = fouled in equality/inferiority.")
+    print("  Avg Loc (m) = distance from defending team's own goal (0=own goal, 105=opponent goal).")
+    _print_table(sec5)
     print()
 
     # Save all_transitions.csv to output root

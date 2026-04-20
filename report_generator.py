@@ -200,8 +200,25 @@ def generate_match_report(
             mode = gdf["gaining_team_id"].mode()
             if len(mode) > 0:
                 team_tid = int(mode.iloc[0])
-        pm_id  = (playmakers or {}).get((str(match_id), team_tid)) if team_tid else None
-        pm_str = jersey_str(pm_id, jersey_map or {})
+        # Resolve playmaker from CSV columns (jersey stored at compute time)
+        pm_id, pm_jersey = None, None
+        if "gaining_team_playmaker_id" in gdf.columns:
+            pm_ids = gdf["gaining_team_playmaker_id"].dropna()
+            if len(pm_ids) > 0:
+                pm_id = int(pm_ids.mode().iloc[0])
+        if pm_id is None and playmakers and team_tid:
+            pm_id = (playmakers or {}).get((str(match_id), team_tid))
+        if "gaining_team_playmaker_jersey" in gdf.columns:
+            jerseys = gdf["gaining_team_playmaker_jersey"].dropna()
+            if len(jerseys) > 0:
+                pm_jersey = int(jerseys.mode().iloc[0])
+        # Build display string: prefer stored jersey, then runtime jersey_map, then id only
+        if pm_id is None:
+            pm_str = "—"
+        elif pm_jersey is not None:
+            pm_str = f"#{pm_jersey} (player_id={pm_id})"
+        else:
+            pm_str = jersey_str(pm_id, jersey_map or {})
 
         md_lines += [
             f"## {team_name} (defending) — {n} transitions\n",
@@ -341,6 +358,42 @@ def generate_match_report(
             "",
         ]
 
+        # Foul Analysis section (only if foul columns present in CSV)
+        if "foul_committed" in mdf.columns:
+            foul_df   = tdf[tdf["foul_committed"].astype(bool)]
+            n_fouls   = len(foul_df)
+            foul_rate = n_fouls / n * 100 if n > 0 else 0.0
+            bad_f     = (foul_df["foul_superiority_rating"] == "Bad").sum()
+            okay_f    = (foul_df["foul_superiority_rating"] == "Okay").sum()
+
+            def _fp(val, fmt=".1f"):
+                return format_value(val, fmt) if not (isinstance(val, float) and (val != val)) else "—"
+
+            md_lines += [
+                "### Foul Analysis\n",
+                "> Fouls committed by the defending team within the 15 s transition window. "
+                "**Bad** = fouled while in numerical superiority (≥2 extra defenders behind ball); "
+                "**Okay** = fouled in equality or inferiority (crucial tactical save).\n",
+                _md_table(
+                    ["Metric", "Value"],
+                    [
+                        ["Fouls committed (within 15 s)", str(n_fouls)],
+                        ["Foul interruption rate", f"{foul_rate:.1f}%"],
+                        ["Avg time to foul (s)", _fp(foul_df["foul_time_s"].mean())],
+                        ["Avg foul location (m from own goal)", _fp(foul_df["foul_x_m"].mean())],
+                        ["Fouls in numerical superiority — Bad",
+                         f"{bad_f} ({bad_f/n_fouls*100:.0f}%)" if n_fouls else "—"],
+                        ["Fouls in equality / inferiority — Okay",
+                         f"{okay_f} ({okay_f/n_fouls*100:.0f}%)" if n_fouls else "—"],
+                        ["Avg defenders behind ball at foul",
+                         _fp(foul_df["foul_defenders_behind_ball"].mean())],
+                        ["Avg attackers behind ball at foul",
+                         _fp(foul_df["foul_attackers_behind_ball"].mean())],
+                    ],
+                ),
+                "",
+            ]
+
     md_lines.append(_SINGLE_MATCH_GLOSSARY)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -352,6 +405,26 @@ def generate_match_report(
 # ---------------------------------------------------------------------------
 # Multi-match comparison report (reads from CSV, no raw data)
 # ---------------------------------------------------------------------------
+
+def _build_foul_row(tdf: pd.DataFrame) -> dict:
+    """Build foul comparison fields for one team's defending transitions."""
+    if "foul_committed" not in tdf.columns:
+        return {k: "—" for k in ("n_fouls", "foul_rate", "foul_time_s_avg",
+                                   "foul_x_m_avg", "bad_pct", "okay_pct")}
+    foul_df = tdf[tdf["foul_committed"].astype(bool)]
+    n       = len(tdf)
+    n_f     = len(foul_df)
+    bad_f   = (foul_df["foul_superiority_rating"] == "Bad").sum()
+    okay_f  = (foul_df["foul_superiority_rating"] == "Okay").sum()
+    return {
+        "n_fouls":       n_f,
+        "foul_rate":     f"{n_f/n*100:.1f}%" if n else "—",
+        "foul_time_s_avg": format_value(foul_df["foul_time_s"].mean(), ".1f") if n_f else "—",
+        "foul_x_m_avg":  format_value(foul_df["foul_x_m"].mean(), ".1f") if n_f else "—",
+        "bad_pct":       f"{bad_f} ({bad_f/n_f*100:.0f}%)" if n_f else "—",
+        "okay_pct":      f"{okay_f} ({okay_f/n_f*100:.0f}%)" if n_f else "—",
+    }
+
 
 def _build_comparison_sections(
     df: pd.DataFrame,
@@ -424,6 +497,8 @@ def _build_comparison_sections(
             "ppr90_pct_own":f"{format_value(col_mean(gdf, 'productive_pass_ratio_90') * 100 if not gdf.empty else float('nan'), '.1f')}%" if not gdf.empty else "—",
             "pmd1_pct_own": f"{format_value(pct_bool(gdf, 'playmaker_dependency_1st'), '.1f')}%" if not gdf.empty else "—",
             "pmd2_pct_own": f"{format_value(pct_bool(gdf, 'playmaker_dependency_2nd'), '.1f')}%" if not gdf.empty else "—",
+            # Section 5 — Foul analysis (only if column present)
+            **_build_foul_row(tdf),
         })
 
     team_rows.sort(
@@ -475,8 +550,16 @@ def _build_comparison_sections(
         "ProdPass(45°)%": "ppr45_pct_own", "ProdPass(90°)%": "ppr90_pct_own",
         "PM Dep(1st)%": "pmd1_pct_own", "PM Dep(2nd)%": "pmd2_pct_own",
     })
+    sec5 = _build_sec(team_rows, {
+        "N Fouls":     "n_fouls",
+        "Foul Rate":   "foul_rate",
+        "Avg Time (s)":"foul_time_s_avg",
+        "Avg Loc (m)": "foul_x_m_avg",
+        "Bad (sup.)":  "bad_pct",
+        "Okay (eq./inf.)": "okay_pct",
+    })
 
-    return sec1, sec2, sec3, sec4a, sec4b, comp_df
+    return sec1, sec2, sec3, sec4a, sec4b, sec5, comp_df
 
 
 def _write_comparison_md(
@@ -486,6 +569,7 @@ def _write_comparison_md(
     sec3: pd.DataFrame,
     sec4a: pd.DataFrame,
     sec4b: pd.DataFrame,
+    sec5: pd.DataFrame | None = None,
 ) -> None:
     def _df_to_md(df: pd.DataFrame) -> str:
         cols = list(df.columns)
@@ -521,8 +605,19 @@ def _write_comparison_md(
         "_**Negative Transition:** Metrics show team's own attacking performance when they gain possession. "
         "ConstrProg/OwnHalfExit/ProdPass/PM Dep = quality of possessions when team has the ball._\n",
         _df_to_md(sec4b), "",
-        _MULTI_MATCH_GLOSSARY,
     ]
+
+    if sec5 is not None and not sec5.empty:
+        lines += [
+            "## Section 5 — Foul Analysis\n",
+            "_Fouls committed by the defending team within the 15 s transition window. "
+            "**Bad** = fouled in numerical superiority (≥2 extra defenders behind ball — proactive disruption). "
+            "**Okay** = fouled in equality/inferiority (crucial tactical save). "
+            "Avg Loc (m) = average distance from the defending team's own goal (0 = own goal, 105 = opponent goal)._\n",
+            _df_to_md(sec5), "",
+        ]
+
+    lines.append(_MULTI_MATCH_GLOSSARY)
     path.write_text("\n".join(lines))
 
 
@@ -539,14 +634,14 @@ def generate_comparison_report(
         set(df["losing_team_name"].unique()) | set(df["gaining_team_name"].unique())
     )
 
-    sec1, sec2, sec3, sec4a, sec4b, comp_df = _build_comparison_sections(df, comparison_teams)
+    sec1, sec2, sec3, sec4a, sec4b, sec5, comp_df = _build_comparison_sections(df, comparison_teams)
 
     if comp_df.empty:
         print("  No transitions found for comparison teams.")
         return
 
     md_path = out_dir / "team_comparison.md"
-    _write_comparison_md(md_path, sec1, sec2, sec3, sec4a, sec4b)
+    _write_comparison_md(md_path, sec1, sec2, sec3, sec4a, sec4b, sec5)
     print(f"  Comparison markdown saved: {md_path}")
 
 

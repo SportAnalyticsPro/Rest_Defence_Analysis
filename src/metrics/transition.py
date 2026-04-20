@@ -103,6 +103,81 @@ def ball_regain_dynamics(
 
 
 # ---------------------------------------------------------------------------
+# Foul context helper (used by both transition_rating and compute_transition_metrics)
+# ---------------------------------------------------------------------------
+
+def _compute_foul_context(
+    gaining_15s: pd.DataFrame,
+    raw_df: pd.DataFrame,
+    match_id: str,
+    t0_frame: int,
+    losing_team_label: str,
+    ar: bool,
+) -> dict:
+    """
+    Scan gaining team's actions within 15s for 'foul suffered' (losing team fouled).
+    Returns a dict of foul metrics. All values are NaN/False if no foul found.
+
+    foul_x_m scale: 0 = losing team's own goal (rest defence net), 105 = opponent goal.
+    Converted from Wyscout StartX (0-1000, gaining team perspective) via:
+        foul_x_m = (1000 - StartX) * 105 / 1000
+    """
+    nan = float("nan")
+    _empty = {
+        "foul_committed":             False,
+        "foul_time_s":                nan,
+        "foul_x_m":                   nan,
+        "foul_defenders_behind_ball": nan,
+        "foul_attackers_behind_ball": nan,
+        "foul_superiority_rating":    nan,
+    }
+
+    for _, act in gaining_15s.iterrows():
+        if str(act.get("EndEvent", "")).strip().lower() != "foul suffered":
+            continue
+
+        end_frame   = int(act.get("end_frame", t0_frame))
+        foul_time_s = (end_frame - t0_frame) / 2.0
+
+        raw_x  = act.get("StartX")
+        foul_x_m = (1000.0 - float(raw_x)) * 105.0 / 1000.0 if pd.notna(raw_x) else nan
+
+        defenders_behind = nan
+        attackers_behind = nan
+        sup_rating       = nan
+
+        frame_data = get_frame(raw_df, match_id, end_frame)
+        if frame_data is not None:
+            losing_pos   = get_player_positions(frame_data, losing_team_label, include_gk=False)
+            gaining_team = "b" if losing_team_label == "a" else "a"
+            gaining_pos  = get_player_positions(frame_data, gaining_team, include_gk=False)
+            ball_x       = frame_data.get("x_ball")
+
+            if pd.notna(ball_x):
+                ball_x = float(ball_x)
+                if ar:
+                    d = len(losing_pos[losing_pos[:, 0] < ball_x])
+                    a = len(gaining_pos[gaining_pos[:, 0] < ball_x])
+                else:
+                    d = len(losing_pos[losing_pos[:, 0] > ball_x])
+                    a = len(gaining_pos[gaining_pos[:, 0] > ball_x])
+                defenders_behind = float(d)
+                attackers_behind = float(a)
+                sup_rating       = "Bad" if d > a + 1 else "Okay"
+
+        return {
+            "foul_committed":             True,
+            "foul_time_s":                foul_time_s,
+            "foul_x_m":                   foul_x_m,
+            "foul_defenders_behind_ball": defenders_behind,
+            "foul_attackers_behind_ball": attackers_behind,
+            "foul_superiority_rating":    sup_rating,
+        }
+
+    return _empty
+
+
+# ---------------------------------------------------------------------------
 # Metric 9 — Transition Rating
 # ---------------------------------------------------------------------------
 
@@ -215,38 +290,14 @@ def transition_rating(
 
     # ── Priority 4: Okay ──────────────────────────────────────────────────
     # Gaining team was fouled (Foul suffered) within 15s → check player count
-    for _, act in gaining_15s.iterrows():
-        end_event = str(act.get("EndEvent", "")).strip().lower()
-        if end_event == "foul suffered":
-            # Check player positions at end_frame of this action
-            end_frame = int(act.get("end_frame", t0_frame))
-            frame_data = get_frame(raw_df, match_id, end_frame)
-
-            if frame_data is not None:
-                losing_pos = get_player_positions(frame_data, losing_team_label, include_gk=False)
-                gaining_team = "b" if losing_team_label == "a" else "a"
-                gaining_pos = get_player_positions(frame_data, gaining_team, include_gk=False)
-
-                # Count players behind ball for both teams
-                ball_x = frame_data.get("x_ball")
-                if pd.notna(ball_x):
-                    ball_x = float(ball_x)
-                    # Behind ball = toward losing team's goal
-                    if ar:
-                        # Attacks right: behind ball = x < ball_x
-                        losing_behind = len(losing_pos[losing_pos[:, 0] < ball_x])
-                        gaining_behind = len(gaining_pos[gaining_pos[:, 0] < ball_x])
-                    else:
-                        # Attacks left: behind ball = x > ball_x
-                        losing_behind = len(losing_pos[losing_pos[:, 0] > ball_x])
-                        gaining_behind = len(gaining_pos[gaining_pos[:, 0] > ball_x])
-
-                    # Check losing team player count
-                    if losing_behind <= gaining_behind + 1:
-                        outcomes.add("Okay")
-                    else:
-                        # Losing team has 2+ more players → Bad transition
-                        outcomes.add("Bad")
+    foul_ctx = _compute_foul_context(
+        gaining_15s, raw_df, match_id, t0_frame, losing_team_label, ar
+    )
+    if foul_ctx["foul_committed"]:
+        if foul_ctx["foul_superiority_rating"] == "Okay":
+            outcomes.add("Okay")
+        elif foul_ctx["foul_superiority_rating"] == "Bad":
+            outcomes.add("Bad")
 
     # ── Return worst outcome (Bad > Okay > Good > Best) ────────────────────
     if "Bad" in outcomes:
@@ -692,6 +743,32 @@ def compute_transition_metrics(
         losing_team_label, team_a_attacks_right,
     )
 
+    # --- Foul context metrics (no time limit — full transition until possession recovery) ---
+    match_id        = str(transition_row["match_id"])
+    t0_frame        = int(transition_row["t0_frame"])
+    gaining_team_id = int(transition_row["gaining_team_id"])
+    losing_team_id  = int(transition_row["losing_team_id"])
+    ar = (losing_team_label == "a") == team_a_attacks_right
+
+    # Find when the losing team next regains possession (= natural end of transition)
+    regain = action_df[
+        (action_df["match_id"] == match_id)
+        & (action_df["team_id"] == losing_team_id)
+        & (action_df["start_frame"] > t0_frame)
+    ]
+    t_regain_frame = int(regain["start_frame"].min()) if len(regain) > 0 else int(10e9)
+
+    gaining_all = action_df[
+        (action_df["match_id"] == match_id)
+        & (action_df["team_id"] == gaining_team_id)
+        & (action_df["start_frame"] >= t0_frame)
+        & (action_df["start_frame"] < t_regain_frame)
+    ]
+    foul_ctx = _compute_foul_context(
+        gaining_all, raw_df, match_id, t0_frame, losing_team_label, ar
+    )
+    result.update(foul_ctx)
+
     # --- Positive transition metrics ---
 
     # Metric 11 — Constructive Progression Rate (refined with event chain inspection)
@@ -713,6 +790,9 @@ def compute_transition_metrics(
         dep_1st, dep_2nd = playmaker_dependency(transition_row, events_df, raw_df, pm)
         result["playmaker_dependency_1st"] = dep_1st
         result["playmaker_dependency_2nd"] = dep_2nd
+        # Store playmaker ID so report_generator can display it without raw data
+        _pm_id = pm.get((str(transition_row["match_id"]), int(transition_row["gaining_team_id"])))
+        result["gaining_team_playmaker_id"] = int(_pm_id) if _pm_id is not None else None
 
         # Metric 14 — Productive Pass Ratio (45° and 90° versions)
         result["productive_pass_ratio_45"] = productive_pass_ratio(
@@ -726,5 +806,6 @@ def compute_transition_metrics(
         result["playmaker_dependency_2nd"]  = None
         result["productive_pass_ratio_45"]  = float("nan")
         result["productive_pass_ratio_90"]  = float("nan")
+        result["gaining_team_playmaker_id"] = None
 
     return result
