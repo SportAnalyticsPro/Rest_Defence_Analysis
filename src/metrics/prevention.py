@@ -312,6 +312,9 @@ def compute_prevention_metrics(
     dir_row = direction_df.loc[(str(match_id), period)]
     team_a_attacks_right = bool(dir_row["team_a_attacks_right"])
 
+    ar = (losing_team == "a") == team_a_attacks_right
+    own_goal_x_cm = -PITCH_HALF_LENGTH_CM if ar else PITCH_HALF_LENGTH_CM
+
     results: dict[int, dict] = {}
 
     # First pass: compute per-offset metrics
@@ -337,6 +340,11 @@ def compute_prevention_metrics(
         # Team compactness (entire team, not zone-filtered)
         compactness = team_compactness(losing_pos)
 
+        centroid_x_norm = (
+            abs(float(losing_pos[:, 0].mean()) - own_goal_x_cm) / 100
+            if len(losing_pos) > 0 else float("nan")
+        )
+
         results[offset] = {
             # Metric 1
             "team_length_m": team_length_cm(losing_pos) / 100,
@@ -351,8 +359,9 @@ def compute_prevention_metrics(
             # Metric 4
             "num_superiority_app1": numerical_superiority(zone_app1, losing_pos, gaining_pos),
             "num_superiority_app2": numerical_superiority(zone_app2, losing_pos, gaining_pos),
-            # Metric 5 — team compactness
-            "team_compactness": compactness,
+            # Metric 5 — team compactness + centroid position
+            "team_compactness":    compactness,
+            "team_centroid_x_norm": centroid_x_norm,
             # Metric 7 — pressing intensity
             "zone_press_app1": zone_press_intensity(frame_row, losing_team, zone_app1),
             "zone_press_app2": zone_press_intensity(frame_row, losing_team, zone_app2),
@@ -372,8 +381,9 @@ def _nan_prevention_metrics() -> dict:
         "players_behind_ball":  float("nan"),
         "num_superiority_app1": float("nan"),
         "num_superiority_app2": float("nan"),
-        "team_compactness":     float("nan"),
-        "zone_press_app1":      float("nan"),
+        "team_compactness":      float("nan"),
+        "team_centroid_x_norm":  float("nan"),
+        "zone_press_app1":       float("nan"),
         "zone_press_app2":      float("nan"),
         "team_press":           float("nan"),
         "gaining_ps_zone":      float("nan"),

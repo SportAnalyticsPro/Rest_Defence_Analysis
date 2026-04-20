@@ -321,6 +321,17 @@ def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
             (str(match_id), gaining_tid), str(gaining_tid)
         )
 
+        # SPE flags — allow report_generator to compute SPE without raw data
+        b15, b20, w15, w20 = _check_ball_reaches_third(t_row, raw_df, lmap, direction_df)
+        record["ball_reached_third_15s"] = b15
+        record["ball_reached_third_20s"] = b20
+        record["has_15s_window"]         = w15
+        record["has_20s_window"]         = w20
+        record["losing_team_attacks_right"] = (
+            (get_team_label(match_id, int(t_row["losing_team_id"]), lmap) == "a")
+            == bool(direction_df.loc[(str(match_id), period)]["team_a_attacks_right"])
+        )
+
         records.append(record)
 
         row_elapsed = time.time() - t_row_start
@@ -445,6 +456,18 @@ def visualise_match(
             for k, v in mdict.items():
                 rec[f"{k}_t{offset}"] = v
         rec.update(trans_metrics)
+
+        # SPE flags
+        b15, b20, w15, w20 = _check_ball_reaches_third(t_row, raw_df, lmap, direction_df)
+        rec["ball_reached_third_15s"]    = b15
+        rec["ball_reached_third_20s"]    = b20
+        rec["has_15s_window"]            = w15
+        rec["has_20s_window"]            = w20
+        rec["losing_team_attacks_right"] = (
+            (losing_label == "a")
+            == bool(direction_df.loc[(str(match_id), int(t_row["period"]))]["team_a_attacks_right"])
+        )
+
         metrics_records.append(rec)
     metrics_df = pd.DataFrame(metrics_records)
 
@@ -517,6 +540,50 @@ def visualise_match(
 # ---------------------------------------------------------------------------
 # SPE per team (10-second window)
 # ---------------------------------------------------------------------------
+
+def _check_ball_reaches_third(
+    t_row: pd.Series,
+    raw_df: pd.DataFrame,
+    lmap: dict,
+    direction_df: pd.DataFrame,
+) -> tuple[bool, bool, bool, bool]:
+    """
+    Returns (ball_reached_15s, ball_reached_20s, has_15s_window, has_20s_window).
+
+    has_*_window: enough frames exist after t0 within the same half.
+    ball_reached_*: ball entered the defensive third within that window.
+    Both ball_reached values are False when the corresponding window does not exist.
+    """
+    match_id  = t_row["match_id"]
+    period    = int(t_row["period"])
+    t0_frame  = int(t_row["t0_frame"])
+
+    losing_label = get_team_label(match_id, int(t_row["losing_team_id"]), lmap)
+    dir_row      = direction_df.loc[(str(match_id), period)]
+    ar = (losing_label == "a") == bool(dir_row["team_a_attacks_right"])
+
+    window = get_window_frames(raw_df, match_id, t0_frame, FRAMES_20S)
+    n_frames = len(window)
+
+    has_15s_window = n_frames >= FRAMES_15S
+    has_20s_window = n_frames >= FRAMES_20S
+
+    ball_reached_15s = False
+    ball_reached_20s = False
+
+    for frame_idx, (_, frow) in enumerate(window.iterrows()):
+        bx = frow.get("x_ball")
+        if pd.isna(bx):
+            continue
+        bx = float(bx)
+        if (ar and bx < -THIRD_BOUNDARY_CM) or (not ar and bx > THIRD_BOUNDARY_CM):
+            ball_reached_20s = True
+            if frame_idx < FRAMES_15S:
+                ball_reached_15s = True
+            break
+
+    return ball_reached_15s, ball_reached_20s, has_15s_window, has_20s_window
+
 
 def _spe_for_team(
     team_name: str,

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.9] - 20/04/2026
+
+* [feature] Add ball_reached_third_15s and ball_reached_third_20s per-transition SPE flags to CSV — report_generator can now compute SPE as a simple column mean without accessing raw data
+* [feature] Add has_15s_window and has_20s_window flags to correctly exclude end-of-half transitions from SPE computation
+* [feature] Add losing_team_attacks_right boolean to CSV for direction-aware chart rendering
+* [feature] Add team_centroid_x_norm at t0, t0+1s, t0+5s, t0+10s — distance of losing team centroid from own goal (metres, direction-independent) — needed for pitch block plots and evolution charts
+* [fix] SPE flags and centroid columns now computed in both visualise_match() and compute_all_metrics() paths, ensuring CSV is complete regardless of execution mode
+
 ## [0.0.8] - 20/04/2026
 
 * [feature] Remove match list dependency: team 'a'/'b' labels now derived from raw_df.team_owner column (0=home='a', 1=away='b') via action_id cross-reference when matchesList CSV is absent
