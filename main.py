@@ -173,6 +173,23 @@ def _load_all() -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Team / match helpers
+# ---------------------------------------------------------------------------
+
+def _get_match_ids_for_team(team_id: int) -> list[str]:
+    """Return all match IDs in which team_id participated, sorted."""
+    _, action_df, *_ = _load_all()
+    ids = sorted(
+        action_df[action_df["team_id"] == team_id]["match_id"].astype(str).unique().tolist()
+    )
+    if ids:
+        _log(f"  team_id={team_id}: {len(ids)} match(es) — {ids}")
+    else:
+        _log(f"  WARNING: no matches found for team_id={team_id}")
+    return ids
+
+
+# ---------------------------------------------------------------------------
 # Core detection
 # ---------------------------------------------------------------------------
 
@@ -977,7 +994,14 @@ def _save_match_summary(
 # Multi-match comparison
 # ---------------------------------------------------------------------------
 
-def multi_match_comparison(output_dir: str | None = None) -> None:
+def multi_match_comparison(
+    output_dir: str | None = None,
+    match_ids: list[str] | None = None,
+) -> None:
+    """
+    match_ids: if given, restrict analysis to those match IDs and use all
+               teams found in them. If None, use all matches and COMPARISON_TEAMS.
+    """
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
 
     t_detect = time.time()
@@ -988,6 +1012,12 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
         f"{transitions['match_id'].nunique()} matches.",
         elapsed_since=t_detect,
     )
+
+    # Filter to requested match IDs when provided
+    if match_ids:
+        match_ids_str = {str(m) for m in match_ids}
+        transitions = transitions[transitions["match_id"].astype(str).isin(match_ids_str)].copy()
+        _log(f"  Filtered to {len(transitions)} transitions across {len(match_ids_str)} requested match(es).")
 
     # Add losing_team_name to transitions for grouping / SPE
     transitions = transitions.copy()
@@ -1003,9 +1033,18 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     metrics_df = compute_all_metrics(transitions)
     _log(f"Metrics done — {len(metrics_df)} rows.", elapsed_since=t_metrics)
 
+    # Determine which teams to include in the comparison
+    if match_ids:
+        comparison_teams = (
+            set(metrics_df["losing_team_name"].unique()) |
+            set(metrics_df["gaining_team_name"].unique())
+        )
+    else:
+        comparison_teams = COMPARISON_TEAMS
+
     comp_df = metrics_df[
-        metrics_df["losing_team_name"].isin(COMPARISON_TEAMS) |
-        metrics_df["gaining_team_name"].isin(COMPARISON_TEAMS)
+        metrics_df["losing_team_name"].isin(comparison_teams) |
+        metrics_df["gaining_team_name"].isin(comparison_teams)
     ].copy()
 
     if comp_df.empty:
@@ -1014,7 +1053,7 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
 
     # Build per-team rows
     team_rows = []
-    for team_name in sorted(COMPARISON_TEAMS):
+    for team_name in sorted(comparison_teams):
         tdf = comp_df[comp_df["losing_team_name"] == team_name]
         gdf = comp_df[comp_df["gaining_team_name"] == team_name]
         if tdf.empty:
@@ -1289,13 +1328,15 @@ def print_summary() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Rest Defence Analysis pipeline")
-    parser.add_argument("--match-id",   type=str,  default=None,
-                        help="Single match ID to analyse")
+    parser.add_argument("--match-id",   type=str,  nargs="+", default=None,
+                        help="One or more match IDs to analyse (space-separated)")
+    parser.add_argument("--team-id",    type=int,  default=None,
+                        help="Analyse all matches for this team ID")
     parser.add_argument("--n",          type=int,  default=None,
-                        help="Max number of viz outputs to generate "
+                        help="Max number of viz outputs to generate per match "
                              "(default: ALL transitions; all transitions are always analysed)")
     parser.add_argument("--video",      action="store_true",
-                        help="Generate MP4 videos instead of PNG images (requires --match-id)")
+                        help="Generate MP4 videos instead of PNG images (requires --match-id or --team-id)")
     parser.add_argument("--output-dir", type=str,  default=None,
                         help="Base output directory (default: output/)")
     parser.add_argument("--summary",    action="store_true",
@@ -1322,16 +1363,32 @@ def main() -> None:
             _log(f"Metrics exported to {args.export_csv}")
             return
 
-        if args.match_id:
-            visualise_match(
-                args.match_id,
-                n_outputs=args.n,
-                output_dir=args.output_dir,
-                video=args.video,
-            )
+        # Resolve target match IDs from --match-id or --team-id
+        target_ids: list[str] | None = None
+        if args.team_id is not None:
+            target_ids = _get_match_ids_for_team(args.team_id)
+            if not target_ids:
+                return
+        elif args.match_id:
+            target_ids = [str(m) for m in args.match_id]
+
+        if target_ids:
+            for mid in target_ids:
+                visualise_match(
+                    mid,
+                    n_outputs=args.n,
+                    output_dir=args.output_dir,
+                    video=args.video,
+                )
+            # If multiple matches, also generate a cross-match comparison
+            if len(target_ids) > 1:
+                multi_match_comparison(
+                    output_dir=args.output_dir,
+                    match_ids=target_ids,
+                )
             return
 
-        # Default mode: multi-match comparison
+        # Default mode: all matches, COMPARISON_TEAMS
         multi_match_comparison(output_dir=args.output_dir)
 
     except Exception:
