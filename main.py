@@ -59,7 +59,7 @@ from src.data_loading import (
     build_label_map_from_raw, build_name_map_from_team_ids,
     get_team_label, get_frame,
     THIRD_BOUNDARY_CM, get_window_frames,
-    detect_fps,
+    detect_fps, build_raw_index,
 )
 from src.transition_detection import (
     detect_rest_defence_transitions, transitions_for_match, get_gaining_action,
@@ -122,6 +122,9 @@ def _load_all() -> tuple:
         _log("Data loading — raw_data ...")
         _cache["raw"] = load_raw_data(str(RAW_DATA_PATH))
         _log(f"  raw_data loaded  ({len(_cache['raw'])} rows)", elapsed_since=t)
+        t_idx = time.time()
+        build_raw_index(_cache["raw"])
+        _log(f"  Frame index built", elapsed_since=t_idx)
 
         t2 = time.time()
         _cache["actions"] = load_action_data(str(ACTION_DATA_PATH))

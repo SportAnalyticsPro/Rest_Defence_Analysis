@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2] - 20/04/2026
+
+* [perf] build_raw_index() splits raw_df into per-match DataFrames indexed by frame number at startup — O(log n) frame lookup instead of O(188K) full scan
+* [perf] get_frame() and get_window_frames() now use the per-match index; full scan retained as fallback before index is built
+* [perf] Full multi-match run reduced from ~68s to ~49s (~30% faster); single-match metric computation from ~7s to ~4s
+* [refactor] build_raw_index() added to src/data_loading.py as module-level cache; called once in _load_all() after raw data is loaded
+
 ## [0.1.1] - 20/04/2026
 
 * [feature] Foul analysis: 6 new per-transition CSV columns — foul_committed, foul_time_s, foul_x_m, foul_defenders_behind_ball, foul_attackers_behind_ball, foul_superiority_rating

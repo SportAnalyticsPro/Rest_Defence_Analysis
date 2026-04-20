@@ -255,16 +255,42 @@ def last_defender_x(
 # Raw-data frame lookup helpers
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Per-match frame index (built once, used by get_frame / get_window_frames)
+# ---------------------------------------------------------------------------
+
+_raw_idx: dict[str, pd.DataFrame] = {}
+
+
+def build_raw_index(raw_df: pd.DataFrame) -> None:
+    """
+    Split raw_df into per-match DataFrames indexed by frame number.
+    Call once after loading raw_df. Enables O(log n) frame lookups.
+    """
+    global _raw_idx
+    _raw_idx = {
+        str(mid): grp.set_index("frame").sort_index()
+        for mid, grp in raw_df.groupby("match_id")
+    }
+
+
 def get_frame(raw_df: pd.DataFrame, match_id: str, frame: int) -> pd.Series | None:
     """
     Return the raw_data row for (match_id, frame).
+    Uses the per-match index when available (O(log n)); falls back to scan.
     Returns None if not found.
     """
+    match_df = _raw_idx.get(str(match_id))
+    if match_df is not None:
+        try:
+            row = match_df.loc[int(frame)]
+            return row if isinstance(row, pd.Series) else row.iloc[0]
+        except KeyError:
+            return None
+    # Fallback (before build_raw_index is called)
     mask = (raw_df["match_id"] == str(match_id)) & (raw_df["frame"] == int(frame))
     subset = raw_df[mask]
-    if len(subset) == 0:
-        return None
-    return subset.iloc[0]
+    return subset.iloc[0] if len(subset) > 0 else None
 
 
 def build_team_name_map(matches_df: pd.DataFrame) -> dict[tuple[str, int], str]:
@@ -367,9 +393,18 @@ def get_window_frames(
     """
     Return up to *n_frames* rows from raw_data starting at t0_frame
     for the given match_id, ordered by frame number.
+    Uses the per-match index when available (O(log n) slice); falls back to scan.
     """
+    match_df = _raw_idx.get(str(match_id))
+    if match_df is not None:
+        t0, t1 = int(t0_frame), int(t0_frame) + n_frames - 1
+        window = match_df.loc[t0:t1]
+        if isinstance(window, pd.Series):
+            window = window.to_frame().T
+        # Restore "frame" as a column to match the original return shape
+        return window.reset_index().reset_index(drop=True)
+    # Fallback (before build_raw_index is called)
     match_raw = raw_df[raw_df["match_id"] == str(match_id)]
-    # Frames at t0, t0+1, ..., t0+(n_frames-1)
     target_frames = set(range(int(t0_frame), int(t0_frame) + n_frames))
     window = match_raw[match_raw["frame"].isin(target_frames)].sort_values("frame")
     return window.reset_index(drop=True)
