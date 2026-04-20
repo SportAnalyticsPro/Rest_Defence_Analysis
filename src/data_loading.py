@@ -23,6 +23,39 @@ THIRD_BOUNDARY_CM = PITCH_HALF_LENGTH_CM / 3   # ≈ 1750 cm
 GK_SLOT = 1
 OUTFIELD_SLOTS = list(range(2, 12))   # slots 2-11
 
+# Default fps assumed when detection fails
+DEFAULT_FPS = 2.0
+
+
+def detect_fps(raw_df: pd.DataFrame) -> float:
+    """
+    Detect tracking data framerate from the median inter-frame timestamp interval.
+    Uses one match's period 1 data to avoid cross-match contamination.
+    Falls back to DEFAULT_FPS (2.0) if data is insufficient.
+    """
+    if "t" not in raw_df.columns or len(raw_df) < 10:
+        return DEFAULT_FPS
+
+    # Use the first match that has at least 10 period-1 frames
+    match_col = "match_id" if "match_id" in raw_df.columns else raw_df.columns[0]
+    for match_id in raw_df[match_col].unique():
+        subset = raw_df[raw_df[match_col] == match_id]
+        if "period" in subset.columns:
+            subset = subset[subset["period"] == 1]
+        if len(subset) < 10:
+            continue
+        t_sorted = subset["t"].sort_values()
+        diffs = t_sorted.diff().dropna()
+        diffs = diffs[diffs > 0]
+        if len(diffs) == 0:
+            continue
+        median_ms = float(diffs.median())
+        if median_ms > 0:
+            fps = 1000.0 / median_ms
+            return round(fps, 1)
+
+    return DEFAULT_FPS
+
 
 # ---------------------------------------------------------------------------
 # CSV loaders
