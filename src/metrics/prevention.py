@@ -22,8 +22,6 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 
 from ..data_loading import (
     PITCH_HALF_LENGTH_CM,
@@ -69,6 +67,9 @@ def rest_defence_line_height_cm(
     1D k-means (best k by silhouette) on outfield x.
     Height = distance from rearmost cluster centroid to own goal line.
     """
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+
     if len(positions) < 3:
         return float("nan")
 

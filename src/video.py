@@ -22,10 +22,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -116,6 +112,11 @@ def generate_transition_video(
     -------
     Path to the saved video file.
     """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.animation as animation
+    import matplotlib.pyplot as plt
+
     n_sub = output_fps // tracking_fps
 
     match_id   = transition_row["match_id"]

@@ -30,7 +30,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.gridspec import GridSpec
-from mplsoccer import Pitch
 
 from .data_loading import (
     PITCH_HALF_LENGTH_CM,
@@ -99,6 +98,7 @@ def _draw_pitch_panel(
     draw_ball_line: bool = False,
     highlight_behind_ball: bool = False,
 ) -> None:
+    from mplsoccer import Pitch
     pitch = Pitch(
         pitch_type="custom",
         pitch_length=_cm_to_m(PITCH_HALF_LENGTH_CM * 2),
@@ -418,6 +418,7 @@ def plot_transition_analysis(
     Zones are rebuilt fresh for each panel from pre-cached per-offset data.
     Figure background is white.
     """
+    from mplsoccer import Pitch
     match_id  = transition_row["match_id"]
     period    = int(transition_row["period"])
     t0_frame  = int(transition_row["t0_frame"])

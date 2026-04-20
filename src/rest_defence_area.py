@@ -24,8 +24,6 @@ import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 
 from .data_loading import (
     PITCH_HALF_LENGTH_CM,
@@ -106,6 +104,9 @@ def _kmeans_1d(
     Returns (labels, best_k).
     Falls back to all-zeros if fewer than 3 players or silhouette fails.
     """
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+
     if len(positions) < 3:
         return np.zeros(len(positions), dtype=int), 1
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.6] - 19/04/2026
+
+* [fix] Lazy imports: moved sklearn, mplsoccer, matplotlib.animation to inside the functions that need them
+* [fix] `python main.py --help` now responds in ~0.5s instead of several seconds
+* Affected files: main.py, src/rest_defence_area.py, src/metrics/prevention.py, src/visualisation.py, src/video.py
+
 ## [0.0.5] - 19/04/2026
 
 * [fix] Round all float columns in exported CSVs to 4 decimal places (was up to 16 digits, e.g. coverage_ratio)

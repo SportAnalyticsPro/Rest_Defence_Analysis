@@ -51,14 +51,11 @@ from src.data_loading import (
 from src.transition_detection import (
     detect_rest_defence_transitions, transitions_for_match, get_gaining_action,
 )
-from src.rest_defence_area import build_zones
 from src.metrics.prevention import compute_prevention_metrics
 from src.metrics.transition import (
     compute_transition_metrics, structural_prevention_efficiency,
     identify_playmakers,
 )
-from src.visualisation import plot_transition_analysis
-from src.video import generate_transition_video
 
 # Teams included in multi-match comparison
 COMPARISON_TEAMS = {"Juventus", "Hellas Verona", "Como"}
@@ -191,6 +188,7 @@ def _jersey_str(player_id: int | None, jersey_map: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def compute_all_metrics(transitions: pd.DataFrame) -> pd.DataFrame:
+    from src.rest_defence_area import build_zones
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
     records = []
     n_total = len(transitions)
@@ -290,6 +288,9 @@ def visualise_match(
     output_dir: str | None = None,
     video: bool = False,
 ) -> None:
+    from src.rest_defence_area import build_zones
+    from src.visualisation import plot_transition_analysis
+    from src.video import generate_transition_video
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
 
     t = time.time()
