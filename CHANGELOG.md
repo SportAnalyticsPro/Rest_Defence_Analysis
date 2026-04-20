@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.7] - 19/04/2026
+
+* [feature] File-based logging: all log output now written to both stdout and <output_dir>/run.log
+* [feature] Fatal exceptions captured with full traceback in run.log via try/except in main()
+* [refactor] _log() now routes through Python logging module instead of print()
+
 ## [0.0.6] - 19/04/2026
 
 * [fix] Lazy imports: moved sklearn, mplsoccer, matplotlib.animation to inside the functions that need them

@@ -24,6 +24,7 @@ Metric categories
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 from pathlib import Path
@@ -71,12 +72,31 @@ FRAMES_20S = 40
 # ---------------------------------------------------------------------------
 
 _wall_start: float = time.time()
+_logger = logging.getLogger("transition_control")
+
+
+def _setup_logging(output_dir: Path) -> None:
+    """Set up console + file logging. Call once after output_dir exists."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(message)s")
+    _logger.setLevel(logging.DEBUG)
+    # Avoid adding duplicate handlers on repeated calls
+    if _logger.handlers:
+        return
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setFormatter(fmt)
+    _logger.addHandler(ch)
+    log_path = output_dir / "run.log"
+    fh = logging.FileHandler(log_path, mode="w", encoding="utf-8")
+    fh.setFormatter(fmt)
+    _logger.addHandler(fh)
+    _logger.info(f"Log file: {log_path}")
 
 
 def _log(msg: str, *, elapsed_since: float | None = None) -> None:
     total = time.time() - _wall_start
     suffix = f"  (+{time.time() - elapsed_since:.1f}s)" if elapsed_since is not None else ""
-    print(f"[{total:6.1f}s] {msg}{suffix}", flush=True)
+    _logger.info(f"[{total:6.1f}s] {msg}{suffix}")
 
 
 # ---------------------------------------------------------------------------
@@ -1296,30 +1316,39 @@ def main() -> None:
                         help="Export full metrics CSV to this path")
     args = parser.parse_args()
 
-    if args.summary:
-        print_summary()
-        return
+    # Determine output root and set up logging before any work begins
+    output_root = Path(args.output_dir) if args.output_dir else OUTPUT_DIR
+    _setup_logging(output_root)
 
-    if args.export_csv:
-        transitions = run_detection()
-        metrics_df  = compute_all_metrics(transitions)
-        float_cols = metrics_df.select_dtypes(include="float").columns
-        metrics_df[float_cols] = metrics_df[float_cols].round(4)
-        metrics_df.to_csv(args.export_csv, index=False)
-        _log(f"Metrics exported to {args.export_csv}")
-        return
+    try:
+        if args.summary:
+            print_summary()
+            return
 
-    if args.match_id:
-        visualise_match(
-            args.match_id,
-            n_outputs=args.n,
-            output_dir=args.output_dir,
-            video=args.video,
-        )
-        return
+        if args.export_csv:
+            transitions = run_detection()
+            metrics_df  = compute_all_metrics(transitions)
+            float_cols = metrics_df.select_dtypes(include="float").columns
+            metrics_df[float_cols] = metrics_df[float_cols].round(4)
+            metrics_df.to_csv(args.export_csv, index=False)
+            _log(f"Metrics exported to {args.export_csv}")
+            return
 
-    # Default mode: multi-match comparison
-    multi_match_comparison(output_dir=args.output_dir)
+        if args.match_id:
+            visualise_match(
+                args.match_id,
+                n_outputs=args.n,
+                output_dir=args.output_dir,
+                video=args.video,
+            )
+            return
+
+        # Default mode: multi-match comparison
+        multi_match_comparison(output_dir=args.output_dir)
+
+    except Exception:
+        _logger.exception("Fatal error — full traceback follows")
+        raise
 
 
 if __name__ == "__main__":
