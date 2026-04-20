@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.5] - 19/04/2026
+
+* [fix] Round all float columns in exported CSVs to 4 decimal places (was up to 16 digits, e.g. coverage_ratio)
+* Applied to all three CSV save sites: single-match summary, multi-match comparison, and --export-csv path
+
 ## [0.0.4] - 17/04/2026
 
 * [feature] Press & Escape Pressure metrics: added percentage change (Δ%) reporting from t0+1s baseline for pressing intensity and escape pressure

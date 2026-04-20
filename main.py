@@ -952,6 +952,8 @@ def _save_match_summary(
     _log(f"  Summary saved: {md_path}")
 
     csv_path = out_dir / f"match_{match_id}_summary.csv"
+    float_cols = metrics_df.select_dtypes(include="float").columns
+    metrics_df[float_cols] = metrics_df[float_cols].round(4)
     metrics_df.to_csv(str(csv_path), index=False)
     _log(f"  Metrics CSV saved: {csv_path}")
 
@@ -1189,6 +1191,8 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
     _log("Saving comparison outputs ...")
 
     csv_path = base_dir / "team_comparison.csv"
+    float_cols = comp_df.select_dtypes(include="float").columns
+    comp_df[float_cols] = comp_df[float_cols].round(4)
     comp_df.to_csv(str(csv_path), index=False)
     _log(f"  Comparison CSV saved: {csv_path}", elapsed_since=t_save)
 
@@ -1298,6 +1302,8 @@ def main() -> None:
     if args.export_csv:
         transitions = run_detection()
         metrics_df  = compute_all_metrics(transitions)
+        float_cols = metrics_df.select_dtypes(include="float").columns
+        metrics_df[float_cols] = metrics_df[float_cols].round(4)
         metrics_df.to_csv(args.export_csv, index=False)
         _log(f"Metrics exported to {args.export_csv}")
         return
