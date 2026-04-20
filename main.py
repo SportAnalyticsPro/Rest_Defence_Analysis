@@ -343,6 +343,7 @@ def visualise_match(
     n_outputs: int | None = None,
     output_dir: str | None = None,
     video: bool = False,
+    report: bool = False,
 ) -> None:
     from src.rest_defence_area import build_zones
     from src.visualisation import plot_transition_analysis
@@ -511,7 +512,7 @@ def visualise_match(
     t_sum = time.time()
     _log("Generating match summary ...")
     _print_match_summary(metrics_df, match_id, playmakers, jersey_map)
-    _save_match_summary(metrics_df, match_id, out_dir, playmakers, jersey_map)
+    _save_match_summary(metrics_df, match_id, out_dir, playmakers, jersey_map, report=report)
     _log("Match summary done.", elapsed_since=t_sum)
 
 
@@ -748,6 +749,7 @@ def _save_match_summary(
     out_dir: Path,
     playmakers: dict | None = None,
     jersey_map: dict | None = None,
+    report: bool = False,
 ) -> None:
     if metrics_df.empty:
         return
@@ -756,8 +758,9 @@ def _save_match_summary(
     metrics_df[float_cols] = metrics_df[float_cols].round(4)
     metrics_df.to_csv(str(csv_path), index=False)
     _log(f"  Metrics CSV saved: {csv_path}")
-    from report_generator import generate_match_report
-    generate_match_report(metrics_df, match_id, out_dir, playmakers=playmakers, jersey_map=jersey_map)
+    if report:
+        from report_generator import generate_match_report
+        generate_match_report(metrics_df, match_id, out_dir, playmakers=playmakers, jersey_map=jersey_map)
 
 
 # ---------------------------------------------------------------------------
@@ -767,10 +770,12 @@ def _save_match_summary(
 def multi_match_comparison(
     output_dir: str | None = None,
     match_ids: list[str] | None = None,
+    report: bool = False,
 ) -> None:
     """
     match_ids: if given, restrict analysis to those match IDs and use all
                teams found in them. If None, use all matches and COMPARISON_TEAMS.
+    report: if True, generate team_comparison.md via report_generator.
     """
     raw_df, action_df, events_df, matches_df, direction_df, lmap, names, playmakers, jersey_map = _load_all()
 
@@ -1014,9 +1019,9 @@ def multi_match_comparison(
     comp_df.to_csv(str(all_csv_path), index=False)
     _log(f"  All transitions CSV saved: {all_csv_path}", elapsed_since=t_save)
 
-    # Delegate MD report generation to report_generator (CSV-only, no raw data)
-    from report_generator import generate_comparison_report
-    generate_comparison_report(comp_df, base_dir, teams=comparison_teams)
+    if report:
+        from report_generator import generate_comparison_report
+        generate_comparison_report(comp_df, base_dir, teams=comparison_teams)
 
 
 # ---------------------------------------------------------------------------
@@ -1057,6 +1062,9 @@ def main() -> None:
                         help="Generate MP4 videos instead of PNG images (requires --match-id or --team-id)")
     parser.add_argument("--output-dir", type=str,  default=None,
                         help="Base output directory (default: output/)")
+    parser.add_argument("--report",     action="store_true",
+                        help="Also generate markdown report(s) via report_generator "
+                             "(default: CSV + PNGs only)")
     parser.add_argument("--summary",    action="store_true",
                         help="Print direction/SPE summary")
     parser.add_argument("--export-csv", type=str,  default=None,
@@ -1097,17 +1105,18 @@ def main() -> None:
                     n_outputs=args.n,
                     output_dir=args.output_dir,
                     video=args.video,
+                    report=args.report,
                 )
-            # If multiple matches, also generate a cross-match comparison
             if len(target_ids) > 1:
                 multi_match_comparison(
                     output_dir=args.output_dir,
                     match_ids=target_ids,
+                    report=args.report,
                 )
             return
 
         # Default mode: all matches, COMPARISON_TEAMS
-        multi_match_comparison(output_dir=args.output_dir)
+        multi_match_comparison(output_dir=args.output_dir, report=args.report)
 
     except Exception:
         _logger.exception("Fatal error — full traceback follows")

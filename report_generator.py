@@ -560,10 +560,11 @@ def main() -> None:
     )
     parser.add_argument("--input",      required=True,
                         help="Path to the metrics CSV (produced by main.py)")
-    parser.add_argument("--match-id",   type=str, default=None,
-                        help="Generate a single-match report for this match ID")
+    parser.add_argument("--match-id",   type=str, nargs="+", default=None,
+                        help="One or more match IDs. One ID → single-match report. "
+                             "Multiple IDs → per-match reports + comparison for those matches.")
     parser.add_argument("--teams",      type=str, default=None,
-                        help="Comma-separated team names for comparison (default: all teams in CSV)")
+                        help="Comma-separated team names to filter comparison (default: all teams in CSV)")
     parser.add_argument("--output-dir", type=str, default=None,
                         help="Output directory (default: same directory as --input)")
     args = parser.parse_args()
@@ -571,10 +572,19 @@ def main() -> None:
     df = pd.read_csv(args.input)
     out_dir = Path(args.output_dir) if args.output_dir else Path(args.input).parent
 
-    if args.match_id:
-        generate_match_report(df, args.match_id, out_dir)
+    if args.match_id and len(args.match_id) == 1:
+        # Single match: generate match report only
+        generate_match_report(df, args.match_id[0], out_dir)
+    elif args.match_id and len(args.match_id) > 1:
+        # Multiple matches: per-match reports + comparison restricted to those matches
+        match_ids = [str(m) for m in args.match_id]
+        for mid in match_ids:
+            generate_match_report(df, mid, out_dir)
+        filtered = df[df["match_id"].astype(str).isin(match_ids)]
+        generate_comparison_report(filtered, out_dir, teams=None)
     else:
-        teams = set(args.teams.split(",")) if args.teams else None
+        # No match-id: comparison across all (or filtered) teams
+        teams = set(t.strip() for t in args.teams.split(",")) if args.teams else None
         generate_comparison_report(df, out_dir, teams=teams)
 
 
