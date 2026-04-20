@@ -545,12 +545,6 @@ def generate_comparison_report(
         print("  No transitions found for comparison teams.")
         return
 
-    csv_path = out_dir / "team_comparison.csv"
-    float_cols = comp_df.select_dtypes(include="float").columns
-    comp_df[float_cols] = comp_df[float_cols].round(4)
-    comp_df.to_csv(str(csv_path), index=False)
-    print(f"  Comparison CSV saved: {csv_path}")
-
     md_path = out_dir / "team_comparison.md"
     _write_comparison_md(md_path, sec1, sec2, sec3, sec4a, sec4b)
     print(f"  Comparison markdown saved: {md_path}")
