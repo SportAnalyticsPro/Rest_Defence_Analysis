@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.8] - 19/04/2026
+
+* [feature] Remove match list dependency: team 'a'/'b' labels now derived from raw_df.team_owner column (0=home='a', 1=away='b') via action_id cross-reference when matchesList CSV is absent
+* [feature] Optional teams_metadata.csv support for team name/colour overrides when match list unavailable
+* [refactor] CSV column cleanup: removed pitch_control, coverage_ratio (all variants), compactness_delta, zone_press_app3, num_superiority_app3, pitch_control_delta, pressure_delta — ~30 columns removed (99→67)
+* [refactor] Compactness delta in reports now computed from team_compactness values directly rather than stored separately
+* [perf] pitch_control_snapshot() no longer called per-frame in prevention metrics (significant CPU saving)
+
 ## [0.0.7] - 19/04/2026
 
 * [feature] File-based logging: all log output now written to both stdout and <output_dir>/run.log

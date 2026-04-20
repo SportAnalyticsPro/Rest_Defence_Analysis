@@ -59,20 +59,12 @@ def ball_regain_dynamics(
         pass_count               : passes by gaining team
         centroid_advance_5s_m    : losing team centroid shift t0→t0+5s (metres)
         centroid_advance_10s_m   : losing team centroid shift t0→t0+10s (metres)
-        pitch_control_delta_5s   : losing team pitch control Δ t0→t0+5s
-        pitch_control_delta_10s  : losing team pitch control Δ t0→t0+10s
-        pressure_delta_5s        : pressure_on_ball Δ t0→t0+5s
-        pressure_delta_10s       : pressure_on_ball Δ t0→t0+10s
     """
     result = {
         "duration_s":             float("nan"),
         "pass_count":             0.0,            # null → 0 (no passes recorded = 0)
         "centroid_advance_5s_m":  float("nan"),
         "centroid_advance_10s_m": float("nan"),
-        "pitch_control_delta_5s":  float("nan"),
-        "pitch_control_delta_10s": float("nan"),
-        "pressure_delta_5s":       float("nan"),
-        "pressure_delta_10s":      float("nan"),
     }
 
     if gaining_action_row is not None:
@@ -86,14 +78,6 @@ def ball_regain_dynamics(
     row_t0  = get_frame(raw_df, match_id, t0_frame)
     row_t5  = get_frame(raw_df, match_id, t0_frame + FRAMES_5S)
     row_t10 = get_frame(raw_df, match_id, t0_frame + FRAMES_10S)
-
-    gaining_team = "b" if losing_team_label == "a" else "a"
-
-    def _pitch_control(row: pd.Series) -> float:
-        c_l = sum(float(row.get(f"c_{losing_team_label}_{i}", 0) or 0) for i in range(1, 12))
-        c_g = sum(float(row.get(f"c_{gaining_team}_{i}", 0) or 0) for i in range(1, 12))
-        total = c_l + c_g
-        return c_l / total if total > 0 else float("nan")
 
     def _centroid_advance_m(row_end: pd.Series) -> float:
         """Centroid advance in metres (positive = toward opponent goal)."""
@@ -111,25 +95,9 @@ def ball_regain_dynamics(
 
     if row_t0 is not None and row_t5 is not None:
         result["centroid_advance_5s_m"] = _centroid_advance_m(row_t5)
-        pc_t0 = _pitch_control(row_t0)
-        pc_t5 = _pitch_control(row_t5)
-        if not (np.isnan(pc_t0) or np.isnan(pc_t5)):
-            result["pitch_control_delta_5s"] = pc_t5 - pc_t0
-        p_t0 = row_t0.get("pressure_on_ball")
-        p_t5 = row_t5.get("pressure_on_ball")
-        if pd.notna(p_t0) and pd.notna(p_t5):
-            result["pressure_delta_5s"] = float(p_t5) - float(p_t0)
 
     if row_t0 is not None and row_t10 is not None:
         result["centroid_advance_10s_m"] = _centroid_advance_m(row_t10)
-        pc_t0  = _pitch_control(row_t0)
-        pc_t10 = _pitch_control(row_t10)
-        if not (np.isnan(pc_t0) or np.isnan(pc_t10)):
-            result["pitch_control_delta_10s"] = pc_t10 - pc_t0
-        p_t0  = row_t0.get("pressure_on_ball")
-        p_t10 = row_t10.get("pressure_on_ball")
-        if pd.notna(p_t0) and pd.notna(p_t10):
-            result["pressure_delta_10s"] = float(p_t10) - float(p_t0)
 
     return result
 

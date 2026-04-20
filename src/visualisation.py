@@ -308,9 +308,6 @@ def _draw_metrics_table(
         ("NumSup RD App1 (Rule-Based)",   "num_superiority_app1",  "+.0f", ""),
         ("NumSup RD App2 (Clustering)",  "num_superiority_app2",  "+.0f", ""),
         ("Team Compactness (m)",         "team_compactness",      ".1f",  ""),
-        ("Compact Δ (m)",                "compactness_delta",     "+.1f", ""),
-        ("Pitch Control",                "pitch_control",         ".2f",  ""),
-        ("Coverage Ratio",               "coverage_ratio",        ".2f",  ""),
         ("Zone Press App1",              "zone_press_app1",       ".1f",  ""),
         ("Team Press",                   "team_press",            ".1f",  ""),
     ]
@@ -338,14 +335,6 @@ def _draw_metrics_table(
     adv5  = _fmt(t_m.get("centroid_advance_5s_m"),  ".1f")
     adv10 = _fmt(t_m.get("centroid_advance_10s_m"), ".1f")
     table_data.append(["Centroid Adv (m)", "—", "—", adv5, adv10])
-
-    pc5  = _fmt(t_m.get("pitch_control_delta_5s"),  "+.2f")
-    pc10 = _fmt(t_m.get("pitch_control_delta_10s"), "+.2f")
-    table_data.append(["Pitch Ctrl Δ", "—", "—", pc5, pc10])
-
-    pr5  = _fmt(t_m.get("pressure_delta_5s"),  "+.1f")
-    pr10 = _fmt(t_m.get("pressure_delta_10s"), "+.1f")
-    table_data.append(["Pressure Δ", "—", "—", pr5, pr10])
 
     # Positive transition metrics
     cp = t_m.get("constructive_progression")

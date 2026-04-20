@@ -46,6 +46,7 @@ from src.helpers import format_value, col_mean, col_delta_mean, pct_bool, pct_de
 from src.data_loading import (
     load_raw_data, load_action_data, load_events, load_matches,
     derive_attack_direction, build_team_label_map, build_team_name_map,
+    build_label_map_from_raw, build_name_map_from_team_ids,
     get_team_label, get_frame,
     THIRD_BOUNDARY_CM, get_window_frames,
 )
@@ -121,15 +122,30 @@ def _load_all() -> tuple:
         _cache["events"] = load_events(str(EVENTS_PATH))
         _log(f"  events loaded  ({len(_cache['events'])} rows)", elapsed_since=t3)
 
-        _cache["matches"] = load_matches(str(MATCHES_PATH))
-        _log(f"  matches loaded  ({len(_cache['matches'])} rows)")
+        if MATCHES_PATH.exists():
+            _cache["matches"] = load_matches(str(MATCHES_PATH))
+            _log(f"  matches loaded  ({len(_cache['matches'])} rows)")
+            _cache["lmap"]  = build_team_label_map(_cache["matches"])
+            _cache["names"] = build_team_name_map(_cache["matches"])
+        else:
+            _cache["matches"] = None
+            _log("  WARNING: matchesList not found — deriving team labels from raw data team_owner column")
+            _cache["lmap"]  = build_label_map_from_raw(_cache["raw"], _cache["actions"])
+            _cache["names"] = build_name_map_from_team_ids(_cache["actions"])
+            teams_meta_path = DATA_DIR / "teams_metadata.csv"
+            if teams_meta_path.exists():
+                import pandas as _pd
+                meta = _pd.read_csv(teams_meta_path)
+                for _, row in meta.iterrows():
+                    for mid in _cache["actions"]["match_id"].unique():
+                        key = (str(mid), int(row["team_id"]))
+                        if key in _cache["names"]:
+                            _cache["names"][key] = str(row["team_name"])
+                _log(f"  teams_metadata.csv loaded — team names resolved")
 
         t4 = time.time()
         _cache["dir"] = derive_attack_direction(_cache["raw"])
         _log(f"  attack direction derived  ({len(_cache['dir'])} rows)", elapsed_since=t4)
-
-        _cache["lmap"]  = build_team_label_map(_cache["matches"])
-        _cache["names"] = build_team_name_map(_cache["matches"])
 
         t5 = time.time()
         _cache["playmakers"] = identify_playmakers(_cache["events"])
@@ -603,9 +619,6 @@ def _print_match_summary(
         _srow("NumSup RD App1 (Rule-Based)",  "num_superiority_app1", fmt=".1f")
         _srow("NumSup RD App2 (Clustering)", "num_superiority_app2", fmt=".1f")
         _srow("Team Compactness (m)",  "team_compactness",     fmt=".2f")
-        _srow("Compact Δ (m)",         "compactness_delta",    fmt=".2f")
-        _srow("Pitch Control",         "pitch_control",        fmt=".2f")
-        _srow("Coverage Ratio",        "coverage_ratio",       fmt=".2f")
 
         # Pressing (t0+1s, t0+5s, t0+10s only — t0 is always 0 by definition)
         print(f"\n  Pressing & Escape Pressure (0=no intensity, 100=max; Δ%>0 = higher intensity) "
@@ -625,7 +638,6 @@ def _print_match_summary(
 
         _prow("Zone Press App1", "zone_press_app1")
         _prow("Zone Press App2", "zone_press_app2")
-        _prow("Zone Press App3", "zone_press_app3")
         _prow("Team Press", "team_press")
         _prow("Zone Esc.Press (App1)", "gaining_ps_zone")
         _prow("Team Esc.Press", "gaining_ps_mean")
@@ -692,10 +704,7 @@ _SINGLE_MATCH_GLOSSARY = """
 | Players Behind Ball | `players_behind_ball` | Count of outfield defenders with position behind the ball at t0. **More = better immediate cover.** |
 | NumSup RD App1 (Rule-Based) / App2 (Clustering) | `num_superiority_app1/2` | Defenders minus attackers in the App1 / App2 rest-defence zones. App1 uses rule-based zone construction; App2 uses k-means clustering. **Positive = numerical advantage; negative = gap in zone.** |
 | Team Compactness (m) | `team_compactness` | Mean Euclidean distance (m) of outfield defenders from their team centre. **Lower = more compact shape; higher = more spread.** |
-| Compact Δ (m) | `compactness_delta` | Change in Team Compactness relative to t0. **Negative = team tightening up (good recovery).** |
-| Pitch Control | `pitch_control` | Raw sum of spatial coverage values (`c_team_i`) attributed to the defending team. **Higher = more pitch covered.** |
-| Coverage Ratio | `coverage_ratio` | Defending team pitch control as a ratio of total (c_l / (c_l + c_g)). **Higher = better relative spatial dominance.** |
-| Zone Press | `zone_press_app1/2/3` | Mean pressing intensity (`p_` column, 0–100 scale) of defending players inside the App1/App2/App3 zone. **0 = no pressing, 100 = maximum pressing.** Reported as percentage change (Δ%) from t0+1s baseline. Negative Δ = pressing harder over time (good). |
+| Zone Press | `zone_press_app1/2` | Mean pressing intensity (`p_` column, 0–100 scale) of defending players inside the App1/App2 zone. **0 = no pressing, 100 = maximum pressing.** Reported as percentage change (Δ%) from t0+1s baseline. Negative Δ = pressing harder over time (good). |
 | Team Press | `team_press` | Mean pressing intensity of ALL defending outfield players. Same inverted 0–100 scale. **Negative Δ = team increases pressing over time.** |
 | Centroid Advance | `centroid_advance_5s_m` / `_10s_m` | Forward movement (m) of the defending team's centroid toward the opponent goal. **Positive = recovering/advancing shape; negative = retreating.** |
 
@@ -743,13 +752,10 @@ _MULTI_MATCH_GLOSSARY = """
 | **NumSup App2 (5s)** | Numerical Superiority App2 at t0+5s | Defenders minus attackers in App2 (clustering) zone 5 s after transition. Positive = defending team advantage. |
 | **NumSup App2 (10s)** | Numerical Superiority App2 at t0+10s | Same metric 10 s after transition. |
 | **CompΔ(5s)** | Compactness Delta at 5 s | Change in Team Compactness (m) from t0 to t0+5s. Negative = team tightened up (good). |
-| **PitchCtrl** | Pitch Control | Raw sum of defending team's spatial coverage values at t0. Higher = more pitch covered. |
-| **CovRatio** | Coverage Ratio | Defending team pitch control as ratio of total (c_l / total). Higher = better relative coverage. |
 | **ZPress1(t1s)** | Zone Press App1 at t0+1s | Mean pressing intensity (`p_` column, 0–100 scale) of defenders inside App1 zone, 1 s after transition. 0 = no pressing, 100 = maximum pressing. |
 | **ZPress1Δ%(5s)** | Zone Press App1 Δ% 1→5s | Percentage change in zone pressing intensity from t0+1s to t0+5s. **Positive = team pressed harder.** |
 | **ZPress1Δ%(10s)** | Zone Press App1 Δ% 1→10s | Percentage change from t0+1s to t0+10s. Positive = increased pressing. |
 | **ZPress2Δ%(5s)** | Zone Press App2 Δ% 1→5s | Same for App2 (clustering) zone approach. |
-| **ZPress3Δ%(5s)** | Zone Press App3 Δ% 1→5s | Same for App3 (adaptive) zone approach. |
 | **TmPress(t1s)** | Team Press at t0+1s | Mean pressing intensity of all outfield defenders, 1 s after transition. Same 0–100 scale. |
 | **TmPressΔ%(5s)** | Team Press Δ% 1→5s | Percentage change in overall team pressing from t0+1s to t0+5s. Positive = pressed harder. |
 | **TmPressΔ%(10s)** | Team Press Δ% 1→10s | Percentage change from t0+1s to t0+10s. |
@@ -854,12 +860,6 @@ def _save_match_summary(
                     + [format_value(col_mean(tdf, f"num_superiority_app2_t{k}"), ".1f") for k in offset_keys],
                     ["Team Compactness (m)"]
                     + [format_value(col_mean(tdf, f"team_compactness_t{k}"), ".2f") for k in offset_keys],
-                    ["Compact Δ (m, vs t0)"]
-                    + [format_value(col_mean(tdf, f"compactness_delta_t{k}"), ".2f") for k in offset_keys],
-                    ["Pitch Control"]
-                    + [format_value(col_mean(tdf, f"pitch_control_t{k}"), ".2f") for k in offset_keys],
-                    ["Coverage Ratio"]
-                    + [format_value(col_mean(tdf, f"coverage_ratio_t{k}"), ".2f") for k in offset_keys],
                 ],
             ),
             "",
@@ -883,12 +883,6 @@ def _save_match_summary(
                      format_value(col_mean(tdf, "zone_press_app2_t20")),
                      format_value(col_delta_mean(tdf, "zone_press_app2_t10", "zone_press_app2_t2")),
                      format_value(col_delta_mean(tdf, "zone_press_app2_t20", "zone_press_app2_t2"))],
-                    ["Zone Press App3",
-                     format_value(col_mean(tdf, "zone_press_app3_t2")),
-                     format_value(col_mean(tdf, "zone_press_app3_t10")),
-                     format_value(col_mean(tdf, "zone_press_app3_t20")),
-                     format_value(col_delta_mean(tdf, "zone_press_app3_t10", "zone_press_app3_t2")),
-                     format_value(col_delta_mean(tdf, "zone_press_app3_t20", "zone_press_app3_t2"))],
                     ["Team Press (all players)",
                      format_value(col_mean(tdf, "team_press_t2")),
                      format_value(col_mean(tdf, "team_press_t10")),
@@ -928,10 +922,10 @@ def _save_match_summary(
                      format_value(col_mean(tdf, "team_length_m_t20") - col_mean(tdf, "team_length_m_t0"), ".2f"),
                      "Change in team length from t0 to 10s."],
                     ["Compactness Δ 5s (m)",
-                     format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
+                     format_value(col_mean(tdf, "team_compactness_t10") - col_mean(tdf, "team_compactness_t0"), ".2f"),
                      "Change in team compactness from t0 to 5s. Negative = tighter shape."],
                     ["Compactness Δ 10s (m)",
-                     format_value(col_mean(tdf, "compactness_delta_t20"), ".2f"),
+                     format_value(col_mean(tdf, "team_compactness_t20") - col_mean(tdf, "team_compactness_t0"), ".2f"),
                      "Change in team compactness from t0 to 10s. Negative = tighter shape."],
                 ],
             ),
@@ -1065,15 +1059,12 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
             "numsup1_10s": format_value(col_mean(tdf, "num_superiority_app1_t20"), ".1f"),
             "numsup2_5s":  format_value(col_mean(tdf, "num_superiority_app2_t10"), ".1f"),
             "numsup2_10s": format_value(col_mean(tdf, "num_superiority_app2_t20"), ".1f"),
-            "compact_d5s": format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
-            "pitch_ctrl":  format_value(col_mean(tdf, "pitch_control_t0"), ".2f"),
-            "cov_ratio":   format_value(col_mean(tdf, "coverage_ratio_t0"), ".2f"),
+            "compact_d5s": format_value(col_mean(tdf, "team_compactness_t10") - col_mean(tdf, "team_compactness_t0"), ".2f"),
             # Press metrics — from tdf (losing team transitions)
             "zp1_1s":  format_value(col_mean(tdf, "zone_press_app1_t2")),
             "zp1_d5":  format_value(pct_delta(tdf, "zone_press_app1", 2, 10, col_mean)),
             "zp1_d10": format_value(pct_delta(tdf, "zone_press_app1", 2, 20, col_mean)),
             "zp2_d5":  format_value(pct_delta(tdf, "zone_press_app2", 2, 10, col_mean)),
-            "zp3_d5":  format_value(pct_delta(tdf, "zone_press_app3", 2, 10, col_mean)),
             "tp_1s":   format_value(col_mean(tdf, "team_press_t2")),
             "tp_d5":   format_value(pct_delta(tdf, "team_press", 2, 10, col_mean)),
             "tp_d10":  format_value(pct_delta(tdf, "team_press", 2, 20, col_mean)),
@@ -1087,8 +1078,8 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
             "cadv10":      format_value(col_mean(tdf, "centroid_advance_10s_m")),
             "team_len_d5s": format_value(col_mean(tdf, "team_length_m_t10") - col_mean(tdf, "team_length_m_t0"), ".2f"),
             "team_len_d10s": format_value(col_mean(tdf, "team_length_m_t20") - col_mean(tdf, "team_length_m_t0"), ".2f"),
-            "compact_d5s": format_value(col_mean(tdf, "compactness_delta_t10"), ".2f"),
-            "compact_d10s": format_value(col_mean(tdf, "compactness_delta_t20"), ".2f"),
+            "compact_d5s": format_value(col_mean(tdf, "team_compactness_t10") - col_mean(tdf, "team_compactness_t0"), ".2f"),
+            "compact_d10s": format_value(col_mean(tdf, "team_compactness_t20") - col_mean(tdf, "team_compactness_t0"), ".2f"),
             # Section 4b — Team's own attacking performance when gaining ball (gdf)
             "cp_pct_own":      f"{format_value(pct_bool(gdf, 'constructive_progression'), '.1f')}%" if not gdf.empty else "—",
             "ohe_pct_own":     f"{format_value(pct_bool(gdf, 'own_half_exit'), '.1f')}%" if not gdf.empty else "—",
@@ -1142,13 +1133,10 @@ def multi_match_comparison(output_dir: str | None = None) -> None:
         "NumSup App2 (5s)":   "numsup2_5s",
         "NumSup App2 (10s)":  "numsup2_10s",
         "CompΔ(5s)":          "compact_d5s",
-        "PitchCtrl":          "pitch_ctrl",
-        "CovRatio":           "cov_ratio",
         "ZPress1(t1s)":       "zp1_1s",
         "ZPress1Δ%(5s)":      "zp1_d5",
         "ZPress1Δ%(10s)":     "zp1_d10",
         "ZPress2Δ%(5s)":      "zp2_d5",
-        "ZPress3Δ%(5s)":      "zp3_d5",
         "TmPress(t1s)":       "tp_1s",
         "TmPressΔ%(5s)":      "tp_d5",
         "TmPressΔ%(10s)":     "tp_d10",

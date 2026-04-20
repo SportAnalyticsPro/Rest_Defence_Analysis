@@ -263,6 +263,56 @@ def build_team_label_map(matches_df: pd.DataFrame) -> dict[tuple[str, int], str]
     return mapping
 
 
+def build_label_map_from_raw(
+    raw_df: pd.DataFrame,
+    action_df: pd.DataFrame,
+) -> dict[tuple[str, int], str]:
+    """
+    Derive {(match_id, team_id): 'a'|'b'} from raw_df.team_owner column.
+    team_owner=0 → home team → 'a'; team_owner=1 → away team → 'b'.
+    Cross-references action_id between raw_df and action_df to find team_ids.
+    Falls back to logging a warning if a match cannot be resolved.
+    """
+    import warnings
+    mapping: dict[tuple[str, int], str] = {}
+    for match_id in raw_df["match_id"].unique():
+        mraw = raw_df[raw_df["match_id"] == match_id]
+        mact = action_df[action_df["match_id"] == match_id]
+        resolved = {}
+        for owner_val, label in [(0, "a"), (1, "b")]:
+            owner_frames = mraw[mraw["team_owner"] == owner_val]
+            owner_action_ids = owner_frames["action_id"].dropna().unique()
+            owner_actions = mact[mact["action_id"].isin(owner_action_ids)]
+            if owner_actions.empty:
+                warnings.warn(
+                    f"build_label_map_from_raw: no actions found for "
+                    f"team_owner={owner_val} in match {match_id}"
+                )
+                continue
+            team_id = int(owner_actions["team_id"].mode()[0])
+            resolved[label] = team_id
+            mapping[(str(match_id), team_id)] = label
+        if len(resolved) < 2:
+            warnings.warn(
+                f"build_label_map_from_raw: could not resolve both teams "
+                f"for match {match_id} — some metrics may be incorrect"
+            )
+    return mapping
+
+
+def build_name_map_from_team_ids(
+    action_df: pd.DataFrame,
+) -> dict[tuple[str, int], str]:
+    """
+    Fallback name map when matchesList is unavailable.
+    Uses 'Team_<id>' as display name until teams_metadata.csv is provided.
+    """
+    mapping: dict[tuple[str, int], str] = {}
+    for _, row in action_df[["match_id", "team_id"]].drop_duplicates().iterrows():
+        mapping[(str(row["match_id"]), int(row["team_id"]))] = f"Team_{row['team_id']}"
+    return mapping
+
+
 def get_team_label(
     match_id: str,
     team_id: int,

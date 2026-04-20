@@ -315,7 +315,6 @@ def compute_prevention_metrics(
     results: dict[int, dict] = {}
 
     # First pass: compute per-offset metrics
-    compactness_by_offset: dict[int, float] = {}
 
     for offset in time_offsets:
         frame_num = t0_frame + offset
@@ -335,12 +334,8 @@ def compute_prevention_metrics(
             frame_row, losing_team, team_a_attacks_right
         )
 
-        # Pitch control snapshot
-        pc = pitch_control_snapshot(frame_row, losing_team, zone=zone_app1)
-
         # Team compactness (entire team, not zone-filtered)
         compactness = team_compactness(losing_pos)
-        compactness_by_offset[offset] = compactness
 
         results[offset] = {
             # Metric 1
@@ -356,34 +351,16 @@ def compute_prevention_metrics(
             # Metric 4
             "num_superiority_app1": numerical_superiority(zone_app1, losing_pos, gaining_pos),
             "num_superiority_app2": numerical_superiority(zone_app2, losing_pos, gaining_pos),
-            "num_superiority_app3": numerical_superiority(zone_app3, losing_pos, gaining_pos),
             # Metric 5 — team compactness
             "team_compactness": compactness,
-            "compactness_delta": float("nan"),   # filled in second pass below
-            # Metric 6
-            "pitch_control":      pc["pitch_control"],
-            "coverage_ratio":     pc["coverage_ratio"],
-            "pitch_control_zone": pc["pitch_control_zone"],
-            "coverage_ratio_zone": pc["coverage_ratio_zone"],
             # Metric 7 — pressing intensity
             "zone_press_app1": zone_press_intensity(frame_row, losing_team, zone_app1),
             "zone_press_app2": zone_press_intensity(frame_row, losing_team, zone_app2),
-            "zone_press_app3": zone_press_intensity(frame_row, losing_team, zone_app3),
             "team_press": team_press_intensity(frame_row, losing_team),
             # Metric 8 — escape pressure (gaining team under pressure)
             "gaining_ps_zone": gaining_zone_escape_pressure(frame_row, gaining_team, zone_app1),
             "gaining_ps_mean": gaining_team_escape_pressure(frame_row, gaining_team),
         }
-
-    # Second pass: fill compactness deltas relative to t0
-    compactness_t0 = compactness_by_offset.get(0, float("nan"))
-    for offset in time_offsets:
-        if offset == 0:
-            continue
-        if offset in results and offset in compactness_by_offset:
-            c = compactness_by_offset[offset]
-            if not (np.isnan(compactness_t0) or np.isnan(c)):
-                results[offset]["compactness_delta"] = c - compactness_t0
 
     return results
 
@@ -395,16 +372,9 @@ def _nan_prevention_metrics() -> dict:
         "players_behind_ball":  float("nan"),
         "num_superiority_app1": float("nan"),
         "num_superiority_app2": float("nan"),
-        "num_superiority_app3": float("nan"),
         "team_compactness":     float("nan"),
-        "compactness_delta":    float("nan"),
-        "pitch_control":        float("nan"),
-        "coverage_ratio":       float("nan"),
-        "pitch_control_zone":   float("nan"),
-        "coverage_ratio_zone":  float("nan"),
         "zone_press_app1":      float("nan"),
         "zone_press_app2":      float("nan"),
-        "zone_press_app3":      float("nan"),
         "team_press":           float("nan"),
         "gaining_ps_zone":      float("nan"),
         "gaining_ps_mean":      float("nan"),
