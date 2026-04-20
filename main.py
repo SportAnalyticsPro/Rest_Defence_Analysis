@@ -1,16 +1,26 @@
 """
 main.py
 -------
-Entry point for the Rest Defence analysis pipeline.
+Compute engine for the Rest Defence analysis pipeline.
+Outputs: per-transition PNGs (or videos) + metrics CSVs.
+Reports (markdown) are generated separately by report_generator.py.
 
 Usage:
-  python main.py                              → multi-match comparison (Juventus, Hellas Verona, Como)
-  python main.py --match-id 7418             → single match, ALL transitions analysed + viz
-  python main.py --match-id 7418 --video     → single match, MP4 videos instead of images
-  python main.py --match-id 7418 --n 3       → generate only 3 viz; ALL transitions still analysed
-  python main.py --match-id 7418 --output-dir my_dir/
-  python main.py --export-csv out.csv        → export full metrics CSV
-  python main.py --summary                   → direction/SPE summary
+  # CSV only (no PNGs, no reports)
+  python main.py --output-dir out/                         → all_transitions.csv for all matches
+  python main.py --match-id 7418 7754 --output-dir out/   → per-match CSVs + all_transitions.csv
+
+  # PNGs: only when --match-id or --team-id is given
+  python main.py --match-id 7418 --output-dir out/        → match CSV + per-transition PNGs
+  python main.py --match-id 7418 --n 3 --output-dir out/  → only first 3 PNGs (all transitions analysed)
+  python main.py --match-id 7418 --video --output-dir out/ → MP4 videos instead of PNGs
+  python main.py --team-id 95 --output-dir out/           → all matches for team 95: CSVs + PNGs
+
+  # Also generate markdown reports in the same run
+  python main.py --match-id 7418 --output-dir out/ --report
+  python main.py --output-dir out/ --report
+
+  python main.py --summary                                → direction/SPE summary
 
 Metric categories
 -----------------
@@ -1088,6 +1098,13 @@ def main() -> None:
             metrics_df.to_csv(args.export_csv, index=False)
             _log(f"Metrics exported to {args.export_csv}")
             return
+
+        # Warn if visualisation flags are given without a match specifier
+        if args.match_id is None and args.team_id is None:
+            if args.video:
+                _log("WARNING: --video has no effect without --match-id or --team-id")
+            if args.n is not None:
+                _log("WARNING: --n has no effect without --match-id or --team-id")
 
         # Resolve target match IDs from --match-id or --team-id
         target_ids: list[str] | None = None
