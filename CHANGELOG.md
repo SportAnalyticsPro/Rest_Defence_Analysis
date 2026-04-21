@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3] - 21/04/2026
+
+* [feature] Add `count_pressing_zone()` — counts losing-team outfield players with `p_ > 0` inside a zone (called for both app1 and app2)
+* [feature] Add `count_pressing_team()` — counts losing-team outfield players with `p_ > 0` across the full team (no zone filter)
+* [feature] Add `count_pressured_zone()` — counts gaining-team outfield players with `ps_ > 0` inside a zone (called for both app1 and app2)
+* [feature] Add `count_pressured_team()` — counts gaining-team outfield players with `ps_ > 0` across the full team
+* [feature] Zone counts computed for both App1 (rule-based) and App2 (k-means clustering) zone definitions, matching the existing `zone_press_app1` / `zone_press_app2` convention
+* [feature] 30 new CSV columns (`n_pressing_zone_app1_t*`, `n_pressing_zone_app2_t*`, `n_pressing_team_t*`, `n_pressured_zone_app1_t*`, `n_pressured_zone_app2_t*`, `n_pressured_team_t*`) at all 5 time offsets (t0, t2, t10, t20, t30)
+
 ## [0.1.2] - 20/04/2026
 
 * [perf] build_raw_index() splits raw_df into per-match DataFrames indexed by frame number at startup — O(log n) frame lookup instead of O(188K) full scan

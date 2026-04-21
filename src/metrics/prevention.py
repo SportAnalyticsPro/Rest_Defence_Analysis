@@ -283,6 +283,64 @@ def gaining_team_escape_pressure(
     return float(np.mean(values)) if values else float("nan")
 
 
+def count_pressing_zone(
+    frame_row: pd.Series,
+    losing_team: str,
+    zone: RestDefenceZone,
+) -> int:
+    """# outfield players of losing_team with p_ > 0 AND inside zone."""
+    count = 0
+    for i in range(2, 12):
+        x = frame_row.get(f"x_{losing_team}_{i}")
+        y = frame_row.get(f"y_{losing_team}_{i}")
+        p = frame_row.get(f"p_{losing_team}_{i}")
+        if pd.notna(x) and pd.notna(y) and pd.notna(p) and zone.contains(float(x), float(y)):
+            if float(p) > 0:
+                count += 1
+    return count
+
+
+def count_pressing_team(
+    frame_row: pd.Series,
+    losing_team: str,
+) -> int:
+    """# outfield players of losing_team with p_ > 0 (no zone filter)."""
+    return sum(
+        1 for i in range(2, 12)
+        if pd.notna(frame_row.get(f"p_{losing_team}_{i}"))
+        and float(frame_row.get(f"p_{losing_team}_{i}")) > 0
+    )
+
+
+def count_pressured_zone(
+    frame_row: pd.Series,
+    gaining_team: str,
+    zone: RestDefenceZone,
+) -> int:
+    """# outfield players of gaining_team with ps_ > 0 AND inside zone."""
+    count = 0
+    for i in range(2, 12):
+        x  = frame_row.get(f"x_{gaining_team}_{i}")
+        y  = frame_row.get(f"y_{gaining_team}_{i}")
+        ps = frame_row.get(f"ps_{gaining_team}_{i}")
+        if pd.notna(x) and pd.notna(y) and pd.notna(ps) and zone.contains(float(x), float(y)):
+            if float(ps) > 0:
+                count += 1
+    return count
+
+
+def count_pressured_team(
+    frame_row: pd.Series,
+    gaining_team: str,
+) -> int:
+    """# outfield players of gaining_team with ps_ > 0 (no zone filter)."""
+    return sum(
+        1 for i in range(2, 12)
+        if pd.notna(frame_row.get(f"ps_{gaining_team}_{i}"))
+        and float(frame_row.get(f"ps_{gaining_team}_{i}")) > 0
+    )
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -375,6 +433,13 @@ def compute_prevention_metrics(
             # Metric 8 — escape pressure (gaining team under pressure)
             "gaining_ps_zone": gaining_zone_escape_pressure(frame_row, gaining_team, zone_app1),
             "gaining_ps_mean": gaining_team_escape_pressure(frame_row, gaining_team),
+            # Metric 9 — pressing / pressured player counts
+            "n_pressing_zone_app1":  count_pressing_zone(frame_row, losing_team, zone_app1),
+            "n_pressing_zone_app2":  count_pressing_zone(frame_row, losing_team, zone_app2),
+            "n_pressing_team":       count_pressing_team(frame_row, losing_team),
+            "n_pressured_zone_app1": count_pressured_zone(frame_row, gaining_team, zone_app1),
+            "n_pressured_zone_app2": count_pressured_zone(frame_row, gaining_team, zone_app2),
+            "n_pressured_team":      count_pressured_team(frame_row, gaining_team),
         }
 
     return results
@@ -394,4 +459,10 @@ def _nan_prevention_metrics() -> dict:
         "team_press":           float("nan"),
         "gaining_ps_zone":      float("nan"),
         "gaining_ps_mean":      float("nan"),
+        "n_pressing_zone_app1":  float("nan"),
+        "n_pressing_zone_app2":  float("nan"),
+        "n_pressing_team":       float("nan"),
+        "n_pressured_zone_app1": float("nan"),
+        "n_pressured_zone_app2": float("nan"),
+        "n_pressured_team":      float("nan"),
     }
