@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.4] - 21/04/2026
+
+* [feature] Add `plot_pizza_defending()` — 5-slice percentile-ranked pizza chart for defensive transitions (SPE 20s, % Best, Num. Superiority, Recovery Speed, Compactness)
+* [feature] Add `plot_pizza_attacking()` — 5-slice percentile-ranked pizza chart for attacking transitions (Constructive Progression, Own Half Exit, Forward Pass 45°, Playmaker Independence, Transition Speed)
+* [feature] Add `plot_pizza_foul()` — 5-slice percentile-ranked pizza chart for foul analysis (Foul Rate, Time to Foul, Foul Location, Smart Fouls, Bad Fouls)
+* [feature] Pizza charts include team logos in centre circle and percentile definitions below each plot for context
+* [feature] All pizza percentile values shown as integers (0-100) with no decimals, no league mean overlays, no multi-team variants
+* [refactor] Update `plot_foul_table()` to exclude teams with zero fouls (Atalanta, Bologna, Inter, Sasssuolo, Udinese) from foul analysis table
+* [feature] Add PRIMARY_YELLOW (`#FEBF10`) colour constant to visualization module for consistency with brand palette
+
 ## [0.1.3] - 21/04/2026
 
 * [feature] Add `count_pressing_zone()` — counts losing-team outfield players with `p_ > 0` inside a zone (called for both app1 and app2)
