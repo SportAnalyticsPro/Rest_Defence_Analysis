@@ -54,6 +54,19 @@ def _render_styled_table(
       hib  (bool) — higher_is_better (green=high if True, green=low if False)
     """
     teams = sorted(team_data.keys())
+
+    # Drop columns where every team has NaN (missing data / metric not available)
+    n_orig = len(col_config)
+    keep = [
+        i for i in range(n_orig)
+        if not all(np.isnan(team_data[t][i]) for t in teams)
+    ]
+    if len(keep) < n_orig:
+        col_config = [col_config[i] for i in keep]
+        team_data  = {t: [team_data[t][i] for i in keep] for t in teams}
+        # Remap sort index to its new position (or fall back to 0)
+        sort_col_idx = keep.index(sort_col_idx) if sort_col_idx in keep else 0
+
     hib_sort = col_config[sort_col_idx].get("hib", True)
     teams = sorted(
         teams,
@@ -120,7 +133,7 @@ def _render_styled_table(
     # Explanation at very bottom
     fig.text(
         0.5, 0.01, explanation,
-        fontsize=7, color="#666666", style="italic",
+        fontsize=9, color="#333333", style="italic",
         ha="center", va="bottom", wrap=True,
     )
 
@@ -292,18 +305,34 @@ def plot_attacking_transitions(df: pd.DataFrame, output_path: str | None = None)
     def pct_ratio(col):
         return lambda tdf, gdf, a: gdf[col].mean() * 100 if len(gdf) else float("nan")
     def pct_playmaker_either_pass():
-        """Playmaker involved in 1st OR 2nd pass (union of dependencies)."""
-        return lambda tdf, gdf, a: (
-            (gdf["playmaker_dependency_1st"].astype(bool) | gdf["playmaker_dependency_2nd"].astype(bool))
-            .mean() * 100 if len(gdf) else float("nan")
-        )
+        """Playmaker involved in 1st OR 2nd pass (union). Returns NaN if column is entirely missing."""
+        def _calc(tdf, gdf, a):
+            if not len(gdf):
+                return float("nan")
+            col1 = gdf["playmaker_dependency_1st"]
+            if col1.isna().all():
+                return float("nan")
+            b1 = col1.fillna(False).astype(bool)
+            b2 = gdf["playmaker_dependency_2nd"].fillna(False).astype(bool)
+            return (b1 | b2).mean() * 100
+        return _calc
+    def pct_playmaker_1st():
+        """1st-pass dependency, NaN-safe."""
+        def _calc(tdf, gdf, a):
+            if not len(gdf):
+                return float("nan")
+            col = gdf["playmaker_dependency_1st"]
+            if col.isna().all():
+                return float("nan")
+            return col.fillna(False).astype(float).mean() * 100
+        return _calc
 
     rows = _build_team_rows(df, [
         pct_bool("constructive_progression"),
         pct_bool("own_half_exit"),
         pct_ratio("productive_pass_ratio_45"),
         pct_ratio("productive_pass_ratio_90"),
-        pct_bool("playmaker_dependency_1st"),
+        pct_playmaker_1st(),
         pct_playmaker_either_pass(),
     ])
     cols = [

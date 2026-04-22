@@ -38,7 +38,7 @@ _METRICS = {
 }
 
 _X_LABELS = ["Start", "After 5s", "After 10s"]
-_OFFSETS  = ["t0", "t10", "t20"]
+_OFFSETS  = ["t0", "t50", "t100"]
 
 
 def plot_metric_evolution(

@@ -17,13 +17,16 @@ from typing import Optional
 
 import numpy as np
 
-LOGO_BASE_DIR = Path(__file__).parent.parent / "italy-serie-a-2025-2026.football-logos.cc"
+LOGO_BASE_DIR = Path(__file__).parent / "images" / "logos"
 
 # Lowercase team name → logo slug  (None = no logo available)
 _NAME_TO_SLUG: dict[str, str | None] = {
     "como":              "como-1907",
     "hellas verona":     "verona",
     "borussia dortmund": None,
+    "as roma":           "roma",
+    "inter milan":       "inter",
+    "ac milan":          "milan",
 }
 
 
@@ -39,7 +42,7 @@ def get_logo_path(team_name: str, size: int = 256) -> Path | None:
     slug = _get_slug(team_name)
     if slug is None:
         return None
-    path = LOGO_BASE_DIR / f"{size}x{size}" / f"{slug}.football-logos.cc.png"
+    path = LOGO_BASE_DIR / f"{slug}.football-logos.cc.png"
     return path if path.exists() else None
 
 

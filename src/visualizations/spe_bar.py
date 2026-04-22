@@ -90,8 +90,8 @@ def _plot_spe_bars_single(
     )
     spe_line2 = "Higher SPE indicates stronger defensive structure."
 
-    fig.text(0.5, -0.01, spe_line1, ha="center", va="top", fontsize=7.5, color="#555", style="italic", wrap=True)
-    fig.text(0.5, -0.035, spe_line2, ha="center", va="top", fontsize=7.5, color="#555", style="italic")
+    fig.text(0.5, -0.01, spe_line1, ha="center", va="top", fontsize=9.5, color="#333", style="italic", wrap=True)
+    fig.text(0.5, -0.05, spe_line2, ha="center", va="top", fontsize=9.5, color="#333", style="italic")
 
     plt.tight_layout()
 

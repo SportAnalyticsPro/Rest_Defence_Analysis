@@ -84,15 +84,13 @@ def plot_ratings_bar(
     ax.spines[["top", "right", "bottom"]].set_visible(False)
     ax.tick_params(axis="x", labelsize=9)
 
-    # Glossary below chart
-    glossary = (
-        "Best = Defending team regains possession within 5 s   |   "
-        "Good = Ball out of play or opponent fouls within 15 s   |   "
-        "Okay = Defending team fouls or attack delayed past 15 s   |   "
-        "Bad = Shot, penetration or in-behind pass conceded within 15 s"
-    )
-    fig.text(0.5, -0.02, glossary, ha="center", va="top", fontsize=7,
-             color="#555", wrap=True, style="italic")
+    # Glossary below chart — two lines, larger font
+    fig.text(0.5, -0.01,
+             "Best = Regains possession within 5 s   |   Good = Ball out of play or opponent fouls within 15 s",
+             ha="center", va="top", fontsize=9.5, color="#333", style="italic")
+    fig.text(0.5, -0.045,
+             "Okay = Defending team fouls or attack delayed past 15 s   |   Bad = Shot, penetration or in-behind pass conceded within 15 s",
+             ha="center", va="top", fontsize=9.5, color="#333", style="italic")
 
     # Legend panel
     ax_leg.axis("off")

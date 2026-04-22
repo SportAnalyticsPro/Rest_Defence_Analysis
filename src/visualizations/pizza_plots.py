@@ -108,7 +108,7 @@ def plot_pizza_defending(
     fig.text(
         0.5, 0.95,
         "Percentile Ranking vs League (0–100)",
-        fontsize=10, color="#666666", ha="center", va="top", style="italic",
+        fontsize=10, color="#333333", ha="center", va="top", style="italic",
     )
 
     # Definitions at bottom
@@ -119,7 +119,7 @@ def plot_pizza_defending(
     )
     fig.text(
         0.5, 0.02, definitions,
-        fontsize=7, color="#666666", ha="center", va="bottom", wrap=True, style="italic",
+        fontsize=9, color="#333333", ha="center", va="bottom", wrap=True, style="italic",
     )
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.92])
@@ -210,7 +210,7 @@ def plot_pizza_attacking(
     fig.text(
         0.5, 0.95,
         "Percentile Ranking vs League (0–100)",
-        fontsize=10, color="#666666", ha="center", va="top", style="italic",
+        fontsize=10, color="#333333", ha="center", va="top", style="italic",
     )
 
     # Definitions at bottom
@@ -222,7 +222,7 @@ def plot_pizza_attacking(
     )
     fig.text(
         0.5, 0.02, definitions,
-        fontsize=7, color="#666666", ha="center", va="bottom", wrap=True, style="italic",
+        fontsize=9, color="#333333", ha="center", va="bottom", wrap=True, style="italic",
     )
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.92])
@@ -313,7 +313,7 @@ def plot_pizza_foul(
     fig.text(
         0.5, 0.95,
         "Percentile Ranking vs League (0–100)",
-        fontsize=10, color="#666666", ha="center", va="top", style="italic",
+        fontsize=10, color="#333333", ha="center", va="top", style="italic",
     )
 
     # Definitions at bottom
@@ -326,7 +326,7 @@ def plot_pizza_foul(
     )
     fig.text(
         0.5, 0.02, definitions,
-        fontsize=7, color="#666666", ha="center", va="bottom", wrap=True, style="italic",
+        fontsize=9, color="#333333", ha="center", va="bottom", wrap=True, style="italic",
     )
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.92])
@@ -405,7 +405,8 @@ def _team_pizza_values_attacking(df: pd.DataFrame, team: str) -> list[int]:
     prog = gdf["constructive_progression"].astype(float).mean() * 100 if len(gdf) else float("nan")
     own_exit = gdf["own_half_exit"].astype(float).mean() * 100 if len(gdf) else float("nan")
     pass_45 = gdf["productive_pass_ratio_45"].mean() * 100 if len(gdf) else float("nan")
-    playmaker_indep = (1 - gdf["playmaker_dependency_1st"].astype(float).mean()) * 100 if len(gdf) else float("nan")
+    _pm = gdf["playmaker_dependency_1st"]
+    playmaker_indep = float("nan") if not len(gdf) or _pm.isna().all() else (1 - _pm.fillna(0).astype(float).mean()) * 100
     duration = gdf["duration_s"].mean() if len(gdf) else float("nan")
 
     # All teams for ranking
@@ -414,7 +415,11 @@ def _team_pizza_values_attacking(df: pd.DataFrame, team: str) -> list[int]:
     prog_vals = [all_df[all_df["gaining_team_name"] == t]["constructive_progression"].astype(float).mean() * 100 for t in all_teams]
     own_exit_vals = [all_df[all_df["gaining_team_name"] == t]["own_half_exit"].astype(float).mean() * 100 for t in all_teams]
     pass_45_vals = [all_df[all_df["gaining_team_name"] == t]["productive_pass_ratio_45"].mean() * 100 for t in all_teams]
-    playmaker_indep_vals = [(1 - all_df[all_df["gaining_team_name"] == t]["playmaker_dependency_1st"].astype(float).mean()) * 100 for t in all_teams]
+    playmaker_indep_vals = [
+        float("nan") if all_df[all_df["gaining_team_name"] == t]["playmaker_dependency_1st"].isna().all()
+        else (1 - all_df[all_df["gaining_team_name"] == t]["playmaker_dependency_1st"].fillna(0).astype(float).mean()) * 100
+        for t in all_teams
+    ]
     duration_vals = [all_df[all_df["gaining_team_name"] == t]["duration_s"].mean() for t in all_teams]
 
     # Percentiles

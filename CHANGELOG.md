@@ -1,14 +1,41 @@
 # Changelog
 
+## [0.2.0] - 22/04/2026
+
+* [feature] Automated 10-page A4 PDF report generator (`src/pdf_report.py`) mirroring the PowerPoint template structure
+* [feature] PDF pages: Cover, Ball Regain Effectiveness, Team Structure, Foul Control, Attacking Profile, Rankings (4 pages), Glossary
+* [feature] `_Layout` class for precise top-to-bottom absolute positioning with `width=` and `height=` chart sizing
+* [feature] Width-based chart embedding — slot height auto-calculated from chart's natural aspect ratio, no letterboxing or stretching
+* [feature] Full rankings pages (all teams) with team logos, rank numbers, and alternating row colours — one page per metric group
+* [feature] Auto-detect CSV separator (`,` / `;`) and resolve `Team_ID` placeholders to real team names via meta JSON
+* [feature] Team logo resolution updated for new team names: AS Roma, Inter Milan, AC Milan
+* [feature] `src/images/` — team logos and brand logo moved from project root into `src/images/logos/`
+* [feature] `_resolve_team_names()` and `_load_csv()` helpers for flexible data loading
+* [fix] Playmaker dependency NaN-safe: all-null columns return `NaN` instead of converting `NaN → True` via `astype(bool)`
+* [fix] Structural tables silently drop columns where every team has missing data
+* [fix] Time offsets updated throughout for 10 fps data: `t2→t10`, `t10→t50`, `t20→t100`
+* [fix] Evolution line chart comparison teams corrected to `Como`, `Inter Milan`, `Juventus`
+* [refactor] `report_generator.py` moved to `legacy/` — superseded by PDF generator
+* [refactor] Footnote text across all chart functions: fontsize raised to 9–9.5pt, color darkened to `#333`
+* [refactor] README rewritten with full data extraction, pipeline, and PDF generation instructions
+
 ## [0.1.4] - 21/04/2026
 
-* [feature] Add `plot_pizza_defending()` — 5-slice percentile-ranked pizza chart for defensive transitions (SPE 20s, % Best, Num. Superiority, Recovery Speed, Compactness)
-* [feature] Add `plot_pizza_attacking()` — 5-slice percentile-ranked pizza chart for attacking transitions (Constructive Progression, Own Half Exit, Forward Pass 45°, Playmaker Independence, Transition Speed)
-* [feature] Add `plot_pizza_foul()` — 5-slice percentile-ranked pizza chart for foul analysis (Foul Rate, Time to Foul, Foul Location, Smart Fouls, Bad Fouls)
-* [feature] Pizza charts include team logos in centre circle and percentile definitions below each plot for context
-* [feature] All pizza percentile values shown as integers (0-100) with no decimals, no league mean overlays, no multi-team variants
-* [refactor] Update `plot_foul_table()` to exclude teams with zero fouls (Atalanta, Bologna, Inter, Sasssuolo, Udinese) from foul analysis table
-* [feature] Add PRIMARY_YELLOW (`#FEBF10`) colour constant to visualization module for consistency with brand palette
+* [feature] Complete visualization suite: 8 new chart types covering structural metrics, transitions, and foul analysis
+* [feature] Ratings bar charts (`plot_ratings_bar()`) — transition quality distribution per team with logo positioning
+* [feature] Evolution line plots (`plot_metric_evolution()`) — structural metrics over time (t0, t+5s, t+10s) with team logos at data points
+* [feature] Scatterplots (`plot_compactness_vs_length()`, `plot_lineheight_vs_cadv()`) — relationships between key defensive and pressing metrics
+* [feature] Structural analysis table (`plot_team_structure()`) — defensive metrics ranked and colour-coded Red→White→Green
+* [feature] Transition dynamics tables (`plot_transition_dynamics_delta()`, `plot_transition_dynamics_absolute()`) — attacking metrics with gradient colouring
+* [feature] Attacking transitions table (`plot_attacking_transitions()`) — offensive pattern metrics with multi-line header wrapping for readability
+* [feature] Radar/spider plots (`plot_spider_absolute()`, `plot_spider_single_team()`) — 10-metric percentile profiles for team comparison
+* [feature] Pitch block plots (`plot_pitch_block()`) — foul location heatmaps showing where teams commit fouls across the pitch
+* [feature] Foul analysis table (`plot_foul_table()`) — foul patterns and efficiency metrics with zero-foul teams excluded for clarity
+* [feature] Pizza charts: `plot_pizza_defending()`, `plot_pizza_attacking()`, `plot_pizza_foul()` — 5-slice percentile-ranked pizzas with team logos and metric definitions
+* [feature] All charts styled consistently with brand palette (Red, Orange, Yellow, Purple), white backgrounds, and embedded definitions
+* [feature] `generate_all_charts()` orchestrator generates all 8 chart types (15 individual outputs) in sequence with progress reporting
+* [refactor] Define three primary colours (PRIMARY_RED, PRIMARY_ORANGE, PRIMARY_YELLOW) as visualization constants for consistent brand styling
+* [refactor] Improve structural table layout — optimized text wrapping (width 22), header height (1.2"), font sizing (8pt), and header styling with white backgrounds
 
 ## [0.1.3] - 21/04/2026
 
